@@ -198,7 +198,7 @@ public class VisualEffectsManager {
         BukkitRunnable particleTask = new BukkitRunnable() {
             @Override
             public void run() {
-                if (!plugin.getRaidManager().getActiveRaids().contains(raid)) {
+                if (!plugin.getRaidManager().getActiveRaids().containsKey(raid.getId())) {
                     this.cancel();
                     return;
                 }

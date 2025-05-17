@@ -125,6 +125,18 @@ public class RaiderEntityListener implements Listener {
         }
     }
     
+    @EventHandler(priority = EventPriority.NORMAL)
+    public void onEntityDamage(EntityDamageByEntityEvent event) {
+        Entity damaged = event.getEntity();
+        Entity damager = event.getDamager();
+        
+        if (damaged instanceof LivingEntity && isRaidEntity(damaged)) {
+            // Notify coordination manager about damage
+            plugin.getCoordinationManager().handleSquadMemberDamaged(
+                (LivingEntity)damaged, damager, event.getDamage());
+        }
+    }
+    
     @EventHandler(priority = EventPriority.MONITOR)
     public void onEntityDeath(EntityDeathEvent event) {
         LivingEntity entity = event.getEntity();
@@ -207,11 +219,26 @@ public class RaiderEntityListener implements Listener {
     }
     
     private ActiveRaid getRaidById(UUID raidId) {
-        for (ActiveRaid raid : plugin.getRaidManager().getActiveRaids()) {
+        for (ActiveRaid raid : plugin.getRaidManager().getActiveRaids().values()) {
             if (raid.getId().equals(raidId)) {
                 return raid;
             }
         }
         return null;
+    }
+    
+    /**
+     * Check if an entity is part of a raid
+     * @param entity The entity to check
+     * @return true if entity is a raid entity, false otherwise
+     */
+    private boolean isRaidEntity(Entity entity) {
+        for (ActiveRaid raid : plugin.getRaidManager().getActiveRaids().values()) {
+            if (raid.isRaiderEntity(entity.getUniqueId())) {
+                // Process raid entity
+                return true;
+            }
+        }
+        return false;
     }
 }

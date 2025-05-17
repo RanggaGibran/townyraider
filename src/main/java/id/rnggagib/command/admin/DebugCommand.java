@@ -14,6 +14,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 public class DebugCommand implements SubCommand {
@@ -81,13 +82,13 @@ public class DebugCommand implements SubCommand {
     private void showRaidDebugInfo(CommandSender sender) {
         plugin.getMessageManager().send(sender, "admin-debug-raids-header");
         
-        List<ActiveRaid> raids = plugin.getRaidManager().getActiveRaids();
+        Map<UUID, ActiveRaid> raids = plugin.getRaidManager().getActiveRaids();
         if (raids.isEmpty()) {
             plugin.getMessageManager().send(sender, "admin-no-active-raids");
             return;
         }
         
-        for (ActiveRaid raid : raids) {
+        for (ActiveRaid raid : raids.values()) {
             Map<String, String> placeholders = new HashMap<>();
             placeholders.put("town", raid.getTownName());
             placeholders.put("id", raid.getId().toString());

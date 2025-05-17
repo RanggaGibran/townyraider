@@ -148,7 +148,7 @@ public class RaidManager {
         double difficultyScore = difficultyManager.calculateDifficultyScore(town);
         
         UUID raidId = UUID.randomUUID();
-        ActiveRaid raid = new ActiveRaid(raidId, town.getName());
+        ActiveRaid raid = new ActiveRaid(raidId, town.getName(), plugin);
         raid.setLocation(raidLocation);
         
         // Store the difficulty score in raid metadata
@@ -275,7 +275,37 @@ public class RaidManager {
         return !activeRaids.isEmpty();
     }
 
-    public List<ActiveRaid> getActiveRaids() {
+    /**
+     * Get an active raid by its ID
+     * @param raidId The raid ID
+     * @return The active raid or null if not found
+     */
+    public ActiveRaid getRaidById(UUID raidId) {
+        return activeRaids.get(raidId);
+    }
+    
+    /**
+     * Get an active raid by its ID
+     * @param raidId The UUID of the raid to retrieve
+     * @return The ActiveRaid object, or null if not found
+     */
+    public ActiveRaid getActiveRaid(UUID raidId) {
+        return getRaidById(raidId);
+    }
+    
+    /**
+     * Get all active raids
+     * @return Map of active raids by their IDs
+     */
+    public Map<UUID, ActiveRaid> getActiveRaids() {
+        return activeRaids;
+    }
+    
+    /**
+     * Get all active raids as a list
+     * @return List of active raids
+     */
+    public List<ActiveRaid> getActiveRaidsList() {
         return new ArrayList<>(activeRaids.values());
     }
 
@@ -355,7 +385,7 @@ public class RaidManager {
             }
             
             UUID raidId = UUID.randomUUID();
-            ActiveRaid raid = new ActiveRaid(raidId, town.getName());
+            ActiveRaid raid = new ActiveRaid(raidId, town.getName(), plugin);
             raid.setLocation(raidLocation);
             activeRaids.put(raidId, raid);
             

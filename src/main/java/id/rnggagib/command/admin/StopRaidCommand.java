@@ -34,7 +34,7 @@ public class StopRaidCommand implements SubCommand {
         
         if (option.equals("all")) {
             // Stop all active raids
-            List<ActiveRaid> activeRaids = new ArrayList<>(plugin.getRaidManager().getActiveRaids());
+            List<ActiveRaid> activeRaids = new ArrayList<>(plugin.getRaidManager().getActiveRaids().values());
             
             if (activeRaids.isEmpty()) {
                 plugin.getMessageManager().send(sender, "admin-no-active-raids");
@@ -55,7 +55,7 @@ public class StopRaidCommand implements SubCommand {
             // Try to stop a specific raid by town name
             String townName = option;
             
-            ActiveRaid raid = plugin.getRaidManager().getActiveRaids().stream()
+            ActiveRaid raid = plugin.getRaidManager().getActiveRaids().values().stream()
                 .filter(r -> r.getTownName().equalsIgnoreCase(townName))
                 .findFirst()
                 .orElse(null);
@@ -98,7 +98,7 @@ public class StopRaidCommand implements SubCommand {
             options.add("all");
             
             // Add active raided towns
-            options.addAll(plugin.getRaidManager().getActiveRaids().stream()
+            options.addAll(plugin.getRaidManager().getActiveRaids().values().stream()
                 .map(ActiveRaid::getTownName)
                 .collect(Collectors.toList()));
             

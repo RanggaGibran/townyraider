@@ -15,6 +15,9 @@ import id.rnggagib.effects.VisualEffectsManager;
 import id.rnggagib.protection.ProtectionManager;
 import id.rnggagib.persistence.PersistenceManager;
 import id.rnggagib.economy.EconomyManager;
+import id.rnggagib.entity.ai.coordination.RaiderCoordinationManager;
+import id.rnggagib.entity.ai.PathfindingManager;
+import id.rnggagib.entity.ai.retreat.StrategicRetreatManager;
 
 public class TownyRaider extends JavaPlugin {
     private static final Logger LOGGER = Logger.getLogger("townyraider");
@@ -29,6 +32,9 @@ public class TownyRaider extends JavaPlugin {
     private ProtectionManager protectionManager;
     private PersistenceManager persistenceManager;
     private EconomyManager economyManager;
+    private PathfindingManager pathfindingManager;
+    private StrategicRetreatManager retreatManager;
+    private RaiderCoordinationManager coordinationManager;
 
     @Override
     public void onEnable() {
@@ -56,6 +62,15 @@ public class TownyRaider extends JavaPlugin {
         } else {
             LOGGER.severe("Towny plugin not found or not enabled! TownyRaider functionality will be limited.");
         }
+        
+        // Initialize PathfindingManager
+        pathfindingManager = new PathfindingManager(this);
+        
+        // Initialize StrategicRetreatManager
+        retreatManager = new StrategicRetreatManager(this, pathfindingManager);
+        
+        // Initialize RaiderCoordinationManager
+        coordinationManager = new RaiderCoordinationManager(this, pathfindingManager, retreatManager);
         
         LOGGER.info("TownyRaider enabled successfully");
         
@@ -135,6 +150,18 @@ public class TownyRaider extends JavaPlugin {
     
     public EconomyManager getEconomyManager() {
         return economyManager;
+    }
+    
+    public PathfindingManager getPathfindingManager() {
+        return pathfindingManager;
+    }
+    
+    public StrategicRetreatManager getRetreatManager() {
+        return retreatManager;
+    }
+    
+    public RaiderCoordinationManager getCoordinationManager() {
+        return coordinationManager;
     }
     
     public void reloadPlugin() {

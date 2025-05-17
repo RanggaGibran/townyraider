@@ -6,6 +6,7 @@ import id.rnggagib.raid.ActiveRaid;
 import org.bukkit.command.CommandSender;
 
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -20,7 +21,7 @@ public class StatusCommand implements SubCommand {
     @Override
     public void execute(CommandSender sender, String[] args) {
         boolean raidsEnabled = plugin.getRaidManager().isRaidsEnabled();
-        List<ActiveRaid> activeRaids = plugin.getRaidManager().getActiveRaids();
+        List<ActiveRaid> activeRaids = new ArrayList<>(plugin.getRaidManager().getActiveRaids().values());
         
         Map<String, String> placeholders = MessageManager.createPlaceholders(
             "enabled", raidsEnabled ? "enabled" : "disabled",

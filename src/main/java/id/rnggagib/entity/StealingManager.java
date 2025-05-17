@@ -48,7 +48,7 @@ public class StealingManager {
         new BukkitRunnable() {
             @Override
             public void run() {
-                for (ActiveRaid raid : plugin.getRaidManager().getActiveRaids()) {
+                for (ActiveRaid raid : plugin.getRaidManager().getActiveRaids().values()) {
                     for (UUID entityId : raid.getRaiderEntities()) {
                         Entity entity = findEntityByUuid(entityId);
                         if (entity instanceof Zombie && plugin.getRaiderEntityManager().isRaiderZombie(entity)) {
@@ -66,7 +66,7 @@ public class StealingManager {
         new BukkitRunnable() {
             @Override
             public void run() {
-                for (ActiveRaid raid : plugin.getRaidManager().getActiveRaids()) {
+                for (ActiveRaid raid : plugin.getRaidManager().getActiveRaids().values()) {
                     for (UUID entityId : raid.getRaiderEntities()) {
                         Entity entity = findEntityByUuid(entityId);
                         if (entity instanceof Zombie && plugin.getRaiderEntityManager().isRaiderZombie(entity)) {

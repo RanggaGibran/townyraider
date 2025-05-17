@@ -140,7 +140,7 @@ public class PersistenceManager {
                 UUID id = UUID.fromString(raidObj.get("id").getAsString());
                 String townName = raidObj.get("townName").getAsString();
                 
-                ActiveRaid raid = new ActiveRaid(id, townName);
+                ActiveRaid raid = new ActiveRaid(id, townName, plugin);
                 raid.setStartTime(LocalDateTime.parse(raidObj.get("startTime").getAsString(), DATE_FORMATTER));
                 
                 if (raidObj.has("stolenItems")) {
