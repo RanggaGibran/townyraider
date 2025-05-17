@@ -7,16 +7,10 @@ import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.Block;
-import org.bukkit.craftbukkit.v1_19_R3.entity.CraftEntity;
 import org.bukkit.entity.Entity;
-import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Mob;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.util.Vector;
-
-import net.minecraft.world.entity.PathfinderMob;
-import net.minecraft.world.entity.ai.navigation.PathNavigation;
-import net.minecraft.world.level.pathfinder.Path;
 
 import com.palmergames.bukkit.towny.object.Town;
 
@@ -79,21 +73,23 @@ public class PathfindingManager {
         
         // Check if we need to recalculate the path
         if (shouldRecalculatePath(entity, target, cache)) {
-            // Use available methods in Mob interface for pathfinding
+            // Use standard Bukkit API for pathfinding
             boolean success = false;
             
-            try {
-                // First try: Use direct navigation method
-                success = entity.getNavigation().setDestination(target, speed);
-            } catch (Exception e) {
-                // If above method doesn't exist, try alternate approach
-                try {
-                    // Second try: Use simple pathfinding in Minecraft 1.19
-                    success = entity.getPathfinder().pathfind(target, speed);
-                } catch (Exception e2) {
-                    // Last resort: Fallback to our simple implementation
-                    return navigateToFallback(entity, target, speed);
-                }
+            // Set target for mob (this works for most hostile mobs)
+            if (target.getWorld().equals(entity.getWorld())) {
+                // Clear any existing targeting first
+                entity.setTarget(null);
+                
+                // Apply basic physics-based movement
+                Vector direction = target.clone().subtract(entity.getLocation()).toVector().normalize();
+                double distanceToTarget = entity.getLocation().distance(target);
+                
+                // Scale velocity based on distance and desired speed
+                double velocityScale = Math.min(speed * 0.5, distanceToTarget * 0.2);
+                entity.setVelocity(direction.multiply(velocityScale));
+                
+                success = true;
             }
             
             // Update cache
@@ -109,9 +105,6 @@ public class PathfindingManager {
                 // Schedule path monitoring
                 monitorPath(entity, target, cache);
                 return true;
-            } else {
-                // If pathfinding failed, use fallback
-                return navigateToFallback(entity, target, speed);
             }
         }
         
