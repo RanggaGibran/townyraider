@@ -186,7 +186,13 @@ public class RaidManager {
             plugin.getVisualEffectsManager().removeRaidBossBar(raidId);
             
             Town town = townyHandler.getTownByName(raid.getTownName());
+            
+            // Determine if raid was successful based on stolen items
             boolean successful = raid.getStolenItems() > 0;
+            String outcome = successful ? "RAIDERS WON" : "TOWN DEFENDED";
+            
+            plugin.getLogger().info("Raid " + raidId + " on town " + raid.getTownName() + 
+                                  " has ended. " + outcome + " - Items stolen: " + raid.getStolenItems());
             
             RaidHistory history = new RaidHistory(
                 raid.getId(), 

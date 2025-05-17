@@ -21,6 +21,8 @@ import org.bukkit.scheduler.BukkitRunnable;
 
 import com.palmergames.bukkit.towny.object.Town;
 
+import net.kyori.adventure.text.Component;
+
 import id.rnggagib.TownyRaider;
 import id.rnggagib.raid.ActiveRaid;
 
@@ -88,9 +90,13 @@ public class VisualEffectsManager {
         String townName = raid.getTownName();
         String title = plugin.getConfigManager().getMessage("raid-bossbar-title")
                 .replace("{town}", townName);
-        
+        // Parse the title through MiniMessage
+        Component parsedTitle = plugin.getMessageManager().format(title);
+
+        // Create boss bar with Component title
         BossBar bossBar = Bukkit.createBossBar(
-            title,
+            net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer.legacySection()
+                .serialize(parsedTitle),
             BarColor.RED,
             BarStyle.SOLID
         );

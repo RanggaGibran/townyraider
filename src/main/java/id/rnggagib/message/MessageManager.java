@@ -150,4 +150,14 @@ public class MessageManager {
         
         return placeholders;
     }
+
+    /**
+     * Converts a Component to legacy string format with color codes
+     * @param component The component to convert
+     * @return A legacy string representation with color codes
+     */
+    public String toLegacy(Component component) {
+        return net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer.legacySection()
+            .serialize(component);
+    }
 }

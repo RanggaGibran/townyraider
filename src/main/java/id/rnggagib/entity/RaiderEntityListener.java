@@ -3,6 +3,7 @@ package id.rnggagib.entity;
 import id.rnggagib.TownyRaider;
 import id.rnggagib.raid.ActiveRaid;
 
+import org.bukkit.Bukkit;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
@@ -146,6 +147,47 @@ public class RaiderEntityListener implements Listener {
             // Clear drops from raiders
             event.getDrops().clear();
             event.setDroppedExp(0);
+        }
+    }
+    
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onRaiderDeath(EntityDeathEvent event) {
+        Entity entity = event.getEntity();
+        
+        // Check if this is a raider entity
+        if (!plugin.getRaiderEntityManager().isRaider(entity)) {
+            return;
+        }
+        
+        // Get raid ID from entity
+        UUID raidId = plugin.getRaiderEntityManager().getRaidId(entity);
+        if (raidId == null) {
+            return;
+        }
+        
+        // Find the active raid
+        ActiveRaid raid = getRaidById(raidId);
+        if (raid == null) {
+            return;
+        }
+        
+        // Remove entity from raid
+        raid.removeRaiderEntity(entity.getUniqueId());
+        
+        // Log the raider death
+        String raiderType = entity instanceof Zombie ? "ZOMBIE" : "SKELETON";
+        plugin.getLogger().info("Raider " + raiderType + " died during raid " + raidId + 
+                               ". Remaining raiders: " + raid.getRaiderEntities().size());
+        
+        // Check if this was the last raider
+        if (raid.getRaiderEntities().isEmpty()) {
+            // All raiders eliminated - end the raid
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                // Small delay to allow for any final updates
+                plugin.getLogger().info("All raiders eliminated for raid " + raidId + 
+                                       ". Ending raid with " + raid.getStolenItems() + " items stolen.");
+                plugin.getRaidManager().endRaid(raidId);
+            });
         }
     }
     

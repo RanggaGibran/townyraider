@@ -24,11 +24,14 @@ import org.bukkit.Material;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
 import org.bukkit.Particle;
+import net.kyori.adventure.text.Component;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 import java.util.UUID;
+import java.util.HashMap;
+import java.util.Map;
 
 public class RaiderEntityManager {
     private final TownyRaider plugin;
@@ -93,7 +96,12 @@ public class RaiderEntityManager {
         
         // Always ensure it's a baby zombie
         zombie.setBaby(true);
-        zombie.setCustomName(config.getString("name", "Towny Plunderer"));
+        String mobName = config.getString("name", "Towny Plunderer");
+        // Parse the name through MiniMessage
+        Component parsedName = plugin.getMessageManager().format(mobName);
+        // Set the custom name using compatible method
+        String legacyName = plugin.getMessageManager().toLegacy(parsedName);
+        zombie.setCustomName(legacyName);
         zombie.setCustomNameVisible(true);
         
         // Enhanced health and abilities
@@ -187,25 +195,25 @@ public class RaiderEntityManager {
         
         Skeleton skeleton = (Skeleton) world.spawnEntity(location, EntityType.SKELETON);
         
-        skeleton.setCustomName(config.getString("name", "Guardian Skeleton"));
+        // Determine guardian rank based on configurable weights and randomization
+        String rank = determineGuardianRank(config);
+        
+        // Store the rank in skeleton's metadata
+        skeleton.getPersistentDataContainer().set(
+            new NamespacedKey(plugin, "guardian_rank"),
+            PersistentDataType.STRING,
+            rank
+        );
+        
+        // Format name based on rank
+        String mobName = formatGuardianNameByRank(config, rank);
+        Component parsedName = plugin.getMessageManager().format(mobName);
+        String legacyName = plugin.getMessageManager().toLegacy(parsedName);
+        skeleton.setCustomName(legacyName);
         skeleton.setCustomNameVisible(true);
         
-        // Significantly increase health
-        if (skeleton.getAttribute(Attribute.GENERIC_MAX_HEALTH) != null) {
-            double health = config.getDouble("health", 30.0); // Increased from 15.0
-            skeleton.getAttribute(Attribute.GENERIC_MAX_HEALTH).setBaseValue(health);
-            skeleton.setHealth(health);
-        }
-        
-        if (skeleton.getAttribute(Attribute.GENERIC_MOVEMENT_SPEED) != null) {
-            double speed = config.getDouble("speed", 0.25);
-            skeleton.getAttribute(Attribute.GENERIC_MOVEMENT_SPEED).setBaseValue(speed);
-        }
-        
-        if (skeleton.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE) != null) {
-            double damage = config.getDouble("damage", 3.0);
-            skeleton.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE).setBaseValue(damage);
-        }
+        // Apply rank-specific stats and abilities
+        applyRankStats(skeleton, config, rank);
         
         // Add armor for damage reduction
         skeleton.getEquipment().setHelmet(new ItemStack(Material.CHAINMAIL_HELMET));
@@ -262,6 +270,145 @@ public class RaiderEntityManager {
         }
         
         return skeleton;
+    }
+
+    private String determineGuardianRank(ConfigurationSection config) {
+        ConfigurationSection rankSection = config.getConfigurationSection("ranks");
+        if (rankSection == null) {
+            return "novice"; // Default rank
+        }
+        
+        // Get available ranks and their weights
+        Map<String, Integer> rankWeights = new HashMap<>();
+        int totalWeight = 0;
+        
+        for (String rank : rankSection.getKeys(false)) {
+            int weight = rankSection.getInt(rank + ".weight", 10);
+            rankWeights.put(rank, weight);
+            totalWeight += weight;
+        }
+        
+        // If no ranks defined, return default
+        if (totalWeight == 0) {
+            return "novice";
+        }
+        
+        // Select a rank based on weighted probability
+        int selection = new Random().nextInt(totalWeight);
+        int currentWeight = 0;
+        
+        for (Map.Entry<String, Integer> entry : rankWeights.entrySet()) {
+            currentWeight += entry.getValue();
+            if (selection < currentWeight) {
+                return entry.getKey();
+            }
+        }
+        
+        return "novice"; // Fallback
+    }
+
+    private String formatGuardianNameByRank(ConfigurationSection config, String rank) {
+        ConfigurationSection rankSection = config.getConfigurationSection("ranks." + rank);
+        
+        if (rankSection == null) {
+            // Default format if rank config not found
+            return "<gradient:#C0C0C0:#696969><bold>Shadow Archer</bold></gradient> <dark_gray>[Guardian]";
+        }
+        
+        String nameFormat = rankSection.getString("name_format", 
+            "<gradient:{gradient}><bold>{title}</bold></gradient> <{color}>[{rank}]");
+        
+        String gradient = rankSection.getString("gradient", "#C0C0C0:#696969");
+        String title = rankSection.getString("title", "Shadow Archer");
+        String color = rankSection.getString("color", "dark_gray");
+        String displayRank = rankSection.getString("display", rank.substring(0, 1).toUpperCase() + rank.substring(1));
+        
+        return nameFormat
+            .replace("{gradient}", gradient)
+            .replace("{title}", title)
+            .replace("{color}", color)
+            .replace("{rank}", displayRank);
+    }
+
+    private void applyRankStats(Skeleton skeleton, ConfigurationSection config, String rank) {
+        ConfigurationSection rankSection = config.getConfigurationSection("ranks." + rank);
+        
+        if (rankSection == null) {
+            return;
+        }
+        
+        // Apply health multiplier
+        double healthMultiplier = rankSection.getDouble("health_multiplier", 1.0);
+        if (skeleton.getAttribute(Attribute.GENERIC_MAX_HEALTH) != null) {
+            double baseHealth = config.getDouble("health", 30.0);
+            double finalHealth = baseHealth * healthMultiplier;
+            skeleton.getAttribute(Attribute.GENERIC_MAX_HEALTH).setBaseValue(finalHealth);
+            skeleton.setHealth(finalHealth);
+        }
+        
+        // Apply speed multiplier
+        double speedMultiplier = rankSection.getDouble("speed_multiplier", 1.0);
+        if (skeleton.getAttribute(Attribute.GENERIC_MOVEMENT_SPEED) != null) {
+            double baseSpeed = config.getDouble("speed", 0.25);
+            skeleton.getAttribute(Attribute.GENERIC_MOVEMENT_SPEED)
+                .setBaseValue(baseSpeed * speedMultiplier);
+        }
+        
+        // Apply damage multiplier
+        double damageMultiplier = rankSection.getDouble("damage_multiplier", 1.0);
+        if (skeleton.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE) != null) {
+            double baseDamage = config.getDouble("damage", 3.0);
+            skeleton.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE)
+                .setBaseValue(baseDamage * damageMultiplier);
+        }
+        
+        // Apply effects based on rank
+        int resistanceLevel = rankSection.getInt("resistance_level", 1);
+        skeleton.addPotionEffect(new PotionEffect(
+            PotionEffectType.DAMAGE_RESISTANCE, 
+            Integer.MAX_VALUE, 
+            resistanceLevel - 1,
+            false, 
+            false
+        ));
+        
+        // Apply special effects for higher ranks
+        if (rankSection.getBoolean("fire_arrows", false)) {
+            skeleton.setPersistent(true); // Required for some special abilities
+        }
+        
+        // Apply visual rank indicators
+        String particleType = rankSection.getString("rank_particle", null);
+        if (particleType != null) {
+            applyRankParticleEffect(skeleton, particleType);
+        }
+    }
+
+    private void applyRankParticleEffect(Skeleton skeleton, String particleType) {
+        Particle particle;
+        try {
+            particle = Particle.valueOf(particleType.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            particle = Particle.ENCHANTMENT_TABLE;
+        }
+        
+        final Particle finalParticle = particle;
+        
+        new BukkitRunnable() {
+            @Override
+            public void run() {
+                if (!skeleton.isValid() || skeleton.isDead()) {
+                    this.cancel();
+                    return;
+                }
+                
+                skeleton.getWorld().spawnParticle(
+                    finalParticle,
+                    skeleton.getLocation().add(0, 1.8, 0),
+                    3, 0.2, 0.2, 0.2, 0.01
+                );
+            }
+        }.runTaskTimer(plugin, 40L, 40L);
     }
 
     private void markAsRaider(Entity entity, UUID raidId, String type) {
