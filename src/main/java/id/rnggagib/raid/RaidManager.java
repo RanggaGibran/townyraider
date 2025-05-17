@@ -119,6 +119,9 @@ public class RaidManager {
         raid.setLocation(raidLocation);
         activeRaids.put(raid.getId(), raid);
         
+        // Spawn raid mobs at the location
+        plugin.getRaiderEntityManager().spawnRaidMobs(raid, raidLocation);
+        
         Map<String, String> placeholders = new HashMap<>();
         placeholders.put("town", town.getName());
         townyHandler.notifyTownMembers(town, "raid-start", placeholders);
@@ -134,6 +137,9 @@ public class RaidManager {
     public void endRaid(UUID raidId) {
         ActiveRaid raid = activeRaids.remove(raidId);
         if (raid != null) {
+            // Clean up raid mobs
+            plugin.getRaiderEntityManager().cleanupRaidMobs(raidId);
+            
             Town town = townyHandler.getTownByName(raid.getTownName());
             boolean successful = raid.getStolenItems() > 0;
             
