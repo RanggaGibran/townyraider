@@ -98,6 +98,9 @@ public class RaiderEntityManager {
         
         markAsRaider(zombie, raid.getId(), RAIDER_TYPE_ZOMBIE);
         
+        // Apply glow effect
+        plugin.getVisualEffectsManager().applyGlowEffect(zombie, "baby-zombie");
+        
         return zombie;
     }
 
@@ -128,6 +131,9 @@ public class RaiderEntityManager {
         markAsRaider(skeleton, raid.getId(), RAIDER_TYPE_SKELETON);
         
         skeleton.setMetadata("protectTarget", new FixedMetadataValue(plugin, protectTarget.getUniqueId().toString()));
+        
+        // Apply glow effect
+        plugin.getVisualEffectsManager().applyGlowEffect(skeleton, "skeleton");
         
         return skeleton;
     }

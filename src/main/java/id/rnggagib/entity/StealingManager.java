@@ -132,7 +132,13 @@ public class StealingManager {
         
         raid.incrementStolenItems(1);
         
+        // Show visual effects before changing the block
+        plugin.getVisualEffectsManager().showStealEffects(block.getLocation());
+        
         block.setType(Material.AIR);
+        
+        // Update raid progress
+        plugin.getVisualEffectsManager().updateRaidProgress(raid);
         
         plugin.getLogger().info("Raider zombie stole " + type.name() + " during raid " + raid.getId());
     }
@@ -168,6 +174,12 @@ public class StealingManager {
             raiderThefts.put(zombie.getUniqueId(), currentThefts + 1);
             
             raid.incrementStolenItems(stolenCount);
+            
+            // Show visual effects
+            plugin.getVisualEffectsManager().showStealEffects(chest.getLocation());
+            
+            // Update raid progress
+            plugin.getVisualEffectsManager().updateRaidProgress(raid);
             
             plugin.getLogger().info("Raider zombie stole " + stolenCount + " items from chest during raid " + raid.getId());
         }

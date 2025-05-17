@@ -11,6 +11,7 @@ import id.rnggagib.towny.TownyHandler;
 import id.rnggagib.entity.RaiderEntityManager;
 import id.rnggagib.entity.StealingManager;
 import id.rnggagib.entity.RaiderEntityListener;
+import id.rnggagib.effects.VisualEffectsManager;
 
 public class TownyRaider extends JavaPlugin {
     private static final Logger LOGGER = Logger.getLogger("townyraider");
@@ -21,6 +22,7 @@ public class TownyRaider extends JavaPlugin {
     private TownyHandler townyHandler;
     private RaiderEntityManager raiderEntityManager;
     private StealingManager stealingManager;
+    private VisualEffectsManager visualEffectsManager;
 
     @Override
     public void onEnable() {
@@ -31,6 +33,7 @@ public class TownyRaider extends JavaPlugin {
         
         raiderEntityManager = new RaiderEntityManager(this);
         stealingManager = new StealingManager(this);
+        visualEffectsManager = new VisualEffectsManager(this);
         
         if (getServer().getPluginManager().isPluginEnabled("Towny")) {
             townyHandler = new TownyHandler(this);
@@ -53,6 +56,10 @@ public class TownyRaider extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        if (visualEffectsManager != null) {
+            visualEffectsManager.cleanup();
+        }
+        
         if (raiderEntityManager != null) {
             raiderEntityManager.removeAllRaidMobs();
         }
@@ -94,6 +101,10 @@ public class TownyRaider extends JavaPlugin {
     
     public StealingManager getStealingManager() {
         return stealingManager;
+    }
+    
+    public VisualEffectsManager getVisualEffectsManager() {
+        return visualEffectsManager;
     }
     
     public void reloadPlugin() {

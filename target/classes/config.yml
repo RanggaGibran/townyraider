@@ -32,6 +32,23 @@ raids:
   
   # Cooldown between raids for the same town (in hours)
   town-cooldown: 24
+  
+  # Maximum number of stolen items for boss bar progress
+  max-stolen-items: 20
+  
+  # Visual effects
+  effects:
+    # Enable/disable glow effect for raiders
+    glow-enabled: true
+    
+    # Enable/disable border effects
+    border-effects-enabled: true
+    
+    # Enable/disable boss bar
+    bossbar-enabled: true
+    
+    # Enable/disable stealing effects
+    steal-effects-enabled: true
 
 # Mob settings
 mobs:
@@ -106,3 +123,4 @@ messages:
   status-raid: "<gray>Town: <white>{town}</white> | Started: <white>{start_time}</white> | Items Stolen: <red>{stolen}</red></gray>"
   status-no-raids: "<gray>No active raids at the moment.</gray>"
   raids-toggled: "<yellow>Raid functionality has been {status}.</yellow>"
+  raid-bossbar-title: "<bold><gold>Raid on {town}</gold></bold>"

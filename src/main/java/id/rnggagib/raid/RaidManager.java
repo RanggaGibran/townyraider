@@ -122,6 +122,10 @@ public class RaidManager {
         // Spawn raid mobs at the location
         plugin.getRaiderEntityManager().spawnRaidMobs(raid, raidLocation);
         
+        // Create visual effects for the raid
+        plugin.getVisualEffectsManager().createRaidBossBar(raid);
+        plugin.getVisualEffectsManager().createRaidBorderEffects(raid);
+        
         Map<String, String> placeholders = new HashMap<>();
         placeholders.put("town", town.getName());
         townyHandler.notifyTownMembers(town, "raid-start", placeholders);
@@ -139,6 +143,9 @@ public class RaidManager {
         if (raid != null) {
             // Clean up raid mobs
             plugin.getRaiderEntityManager().cleanupRaidMobs(raidId);
+            
+            // Clean up visual effects
+            plugin.getVisualEffectsManager().removeRaidBossBar(raidId);
             
             Town town = townyHandler.getTownByName(raid.getTownName());
             boolean successful = raid.getStolenItems() > 0;
