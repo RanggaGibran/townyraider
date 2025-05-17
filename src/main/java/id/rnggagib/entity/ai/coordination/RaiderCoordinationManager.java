@@ -993,6 +993,58 @@ public class RaiderCoordinationManager {
     }
     
     /**
+     * Identify high-value targets in a town for strategic raiding
+     */
+    public Map<PointOfInterestType, List<Location>> identifyHighValueTargets(ActiveRaid raid) {
+        Map<PointOfInterestType, List<Location>> targets = new HashMap<>();
+        
+        // Get town center
+        Location townCenter = raid.getLocation();
+        if (townCenter == null) return targets;
+        
+        // Find valuable blocks and chests
+        List<Location> valuableLocations = new ArrayList<>();
+        List<Location> chestLocations = new ArrayList<>();
+        List<Location> exitPoints = new ArrayList<>();
+        
+        // Scan area for targets
+        int radius = 50; // 50 block radius
+        for (int x = -radius; x <= radius; x += 5) {
+            for (int z = -radius; z <= radius; z += 5) {
+                Location loc = townCenter.clone().add(x, 0, z);
+                loc.setY(loc.getWorld().getHighestBlockYAt(loc));
+                
+                // Get exact block locations instead of just using the highest block
+                for (int y = -5; y <= 5; y++) {
+                    Location checkLoc = loc.clone().add(0, y, 0);
+                    if (plugin.getConfigManager().getStealableBlocks().contains(checkLoc.getBlock().getType())) {
+                        valuableLocations.add(checkLoc);
+                    }
+                    
+                    if (checkLoc.getBlock().getState() instanceof org.bukkit.block.Chest) {
+                        chestLocations.add(checkLoc);
+                    }
+                }
+                
+                // Edge detection for exit points
+                if (Math.abs(x) > radius - 10 || Math.abs(z) > radius - 10) {
+                    exitPoints.add(loc);
+                }
+            }
+        }
+        
+        // Sort exit points by distance from town center
+        exitPoints.sort(Comparator.comparingDouble(l -> townCenter.distanceSquared(l)));
+        
+        // Add points to result map
+        targets.put(PointOfInterestType.VALUABLE_BLOCK, valuableLocations);
+        targets.put(PointOfInterestType.CHEST, chestLocations);
+        targets.put(PointOfInterestType.EXIT_POINT, exitPoints);
+        
+        return targets;
+    }
+    
+    /**
      * Contains data about a squad of raiders
      */
     public static class RaidSquad {
