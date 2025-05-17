@@ -108,17 +108,13 @@ public class RaiderEntityListener implements Listener {
         }
     }
     
-    @EventHandler(priority = EventPriority.NORMAL)
+    @EventHandler(priority = EventPriority.HIGHEST)
     public void onEntityTarget(EntityTargetLivingEntityEvent event) {
-        if (event.isCancelled()) return;
-        
         Entity entity = event.getEntity();
         
-        if (plugin.getRaiderEntityManager().isRaiderZombie(entity) && entity instanceof Zombie) {
-            // Prevent zombies from targeting players
-            if (event.getTarget() instanceof Player) {
-                event.setCancelled(true);
-            }
+        // Always cancel targeting for raider zombies
+        if (plugin.getRaiderEntityManager().isRaiderZombie(entity)) {
+            event.setCancelled(true);
         } else if (plugin.getRaiderEntityManager().isRaiderSkeleton(entity) && entity instanceof Skeleton) {
             // Let skeletons target players
             if (event.getTarget() instanceof Player) {

@@ -53,7 +53,7 @@ raids:
 # Mob settings
 mobs:
   baby-zombie:
-    name: "<gradient:red:gold>Raider Zombie</gradient>"
+    name: "<gradient:red:dark_red><bold>Towny Plunderer</bold></gradient> <dark_gray>[Raider]</dark_gray>"
     health: 10
     speed: 0.3
     steal-delay: 20
@@ -61,7 +61,7 @@ mobs:
     glow-color: "RED"
   
   skeleton:
-    name: "<gradient:gray:white>Guardian Skeleton</gradient>"
+    name: "<gradient:#C0C0C0:#696969><bold>Shadow Archer</bold></gradient> <dark_gray>[Guardian]</dark_gray>"
     health: 15
     damage: 3
     speed: 0.25
@@ -107,10 +107,10 @@ notifications:
 messages:
   prefix: "<dark_red>[<gold>TownyRaider<dark_red>]</gold> "
   pre-raid-warning: "<bold><red>WARNING!</red></bold> Your town will be raided in {minutes} minutes!"
-  raid-start: "<bold><red>RAID STARTED!</red></bold> Defend your town from the raiders!"
-  raid-end: "<green>The raid has ended. Your town {status}."
-  raid-successful: "lost <red>{stolen}</red> resources"
-  raid-defended: "successfully defended against raiders"
+  raid-start: "<dark_red>⚔ <bold>RAID STARTED!</bold> ⚔ <gold>Defend your town from the raiders!</gold>"
+  raid-end: "<green>⚔ <bold>THE RAID HAS ENDED!</bold> ⚔</green> Your town {status}."
+  raid-successful: "<red>was plundered</red>"
+  raid-defended: "<green>was successfully defended</green>"
   no-permission: "<red>You don't have permission to use this command. Required: {permission}</red>"
   unknown-command: "<red>Unknown command: {command}</red>"
   config-reloaded: "<green>Configuration reloaded successfully!</green>"
@@ -123,24 +123,24 @@ messages:
   status-raid: "<gray>Town: <white>{town}</white> | Started: <white>{start_time}</white> | Items Stolen: <red>{stolen}</red></gray>"
   status-no-raids: "<gray>No active raids at the moment.</gray>"
   raids-toggled: "<yellow>Raid functionality has been {status}.</yellow>"
-  raid-bossbar-title: "<bold><gold>Raid on {town}</gold></bold>"
+  raid-bossbar-title: "<bold><dark_red>⚠ RAID IN PROGRESS: </dark_red> <gold>{town} under attack!</gold> <dark_red>⚠</dark_red></bold>"
   raid-protection-block-break: "<red>This block is protected during the raid!"
   raid-protection-block-place: "<red>You cannot place blocks in this area during a raid!"
   entering-raid-zone: "<dark_red>⚠ <red>You are entering an area under raid!"
-  economy-raid-reward: "<green>Your town has received <gold>{amount}</gold> for successfully defending against the raid!"
-  economy-raid-penalty: "<red>Your town has been fined <gold>{amount}</gold> due to lost resources during the raid."
-  economy-raid-compensation: "<yellow>You have received <gold>{amount}</gold> as compensation for losses during the raid."
-  economy-defender-bonus: "<green>You have received <gold>{amount}</gold> as a reward for defending your town!"
+  economy-raid-reward: "<green>⚔ <bold>DEFENSE REWARD!</bold> ⚔ The town treasury of <yellow>{town}</yellow> has been enriched with <gold>{amount}</gold> gold for your brave defense!"
+  economy-raid-penalty: "<red>☠ <bold>RAID LOSSES!</bold> ☠ <yellow>{town}</yellow> has suffered damages of <gold>{amount}</gold> gold due to stolen resources."
+  economy-raid-compensation: "<yellow>⚒ <bold>COMPENSATION:</bold> ⚒ You've received <gold>{amount}</gold> gold from the town treasury to rebuild after the raid."
+  economy-defender-bonus: "<aqua>✦ <bold>HERO'S REWARD:</bold> ✦ For your bravery in defending <yellow>{town}</yellow>, you've earned <gold>{amount}</gold> gold!"
   # Admin command messages
   admin-command-usage: "<yellow>Usage: <white>{usage}</white></yellow>"
   admin-town-not-found: "<red>Town '{town}' not found!</red>"
   admin-raid-already-active: "<red>There is already an active raid on {town}!</red>"
-  admin-raid-started: "<green>Raid on {town} has been started by {admin}.</green>"
+  admin-raid-started: "<green>⚔ <bold>RAID INITIATED:</bold> ⚔ Raid on <gold>{town}</gold> has been started by <yellow>{admin}</yellow>."
   admin-raid-failed: "<red>Failed to start raid on {town}. Check console for details.</red>"
   admin-no-active-raids: "<yellow>There are no active raids at the moment.</yellow>"
-  admin-all-raids-stopped: "<green>{count} raids have been stopped by {admin}.</green>"
+  admin-all-raids-stopped: "<green>⚔ <bold>RAIDS HALTED:</bold> ⚔ <yellow>{count}</yellow> raids have been stopped by <gold>{admin}</gold>."
   admin-raid-not-found: "<red>There is no active raid on {town}!</red>"
-  admin-raid-stopped: "<green>Raid on {town} has been stopped by {admin}.</green>"
+  admin-raid-stopped: "<green>⚔ <bold>RAID STOPPED:</bold> ⚔ Raid on <gold>{town}</gold> has been halted by <yellow>{admin}</yellow>."
   admin-economy-reloaded: "<green>Economy settings have been reloaded.</green>"
   admin-economy-invalid-setting: "<red>Invalid economy setting: {setting}</red>"
   admin-economy-invalid-value: "<red>Invalid value: {value}. Please use a numeric value.</red>"

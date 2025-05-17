@@ -48,7 +48,7 @@ public class CronExpression {
         if (pattern.contains("/")) {
             String[] parts = pattern.split("/");
             int divisor = Integer.parseInt(parts[1]);
-            return value % divisor == 0;
+            return value % divisor == 0; // Value is divisible by the divisor
         }
         
         return Integer.parseInt(pattern) == value;

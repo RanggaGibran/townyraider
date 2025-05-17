@@ -224,4 +224,24 @@ public class StealingManager {
         
         plugin.getLogger().info("Raider zombie stole " + type.name() + " during raid " + raid.getId());
     }
+
+    public void attemptToStealFromChest(Zombie zombie, Chest chest, ActiveRaid raid) {
+        if (zombie == null || !zombie.isValid() || zombie.isDead()) {
+            return;
+        }
+
+        int maxSteals = plugin.getConfigManager().getMobConfig("baby-zombie").getInt("max-steals", 5);
+        int currentThefts = raiderThefts.getOrDefault(zombie.getUniqueId(), 0);
+        
+        if (currentThefts >= maxSteals) {
+            return;
+        }
+        
+        if (!plugin.getTownyHandler().isLocationInTown(chest.getLocation(), 
+                plugin.getTownyHandler().getTownByName(raid.getTownName()))) {
+            return;
+        }
+        
+        stealFromChest(zombie, chest, raid);
+    }
 }

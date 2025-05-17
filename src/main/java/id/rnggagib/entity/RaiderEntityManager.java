@@ -18,6 +18,7 @@ import org.bukkit.metadata.FixedMetadataValue;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.block.Block;
+import org.bukkit.scheduler.BukkitRunnable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -262,5 +263,89 @@ public class RaiderEntityManager {
         
         // Fallback to a safer spawn location if no suitable location found
         return new Location(world, center.getX(), center.getY() + 3, center.getZ());
+    }
+
+    // Add this method to keep chunks loaded during raids
+    public void keepRaidChunksLoaded(ActiveRaid raid) {
+        Location raidLocation = raid.getLocation();
+        if (raidLocation == null) return;
+        
+        World world = raidLocation.getWorld();
+        int centerX = raidLocation.getBlockX() >> 4; // Convert to chunk X
+        int centerZ = raidLocation.getBlockZ() >> 4; // Convert to chunk Z
+        
+        // Load a 5x5 chunk area around the raid center
+        for (int x = centerX - 2; x <= centerX + 2; x++) {
+            for (int z = centerZ - 2; z <= centerZ + 2; z++) {
+                world.loadChunk(x, z, true);
+                world.setChunkForceLoaded(x, z, true);
+            }
+        }
+        
+        // Schedule a task to keep entities alive and verify they exist
+        new BukkitRunnable() {
+            @Override
+            public void run() {
+                if (!plugin.getRaidManager().getActiveRaids().contains(raid)) {
+                    this.cancel();
+                    unloadRaidChunks(raid);
+                    return;
+                }
+                
+                // Check if mob entities still exist and respawn if needed
+                verifyAndRespawnRaidMobs(raid);
+            }
+        }.runTaskTimer(plugin, 100L, 200L); // Check every 10 seconds
+    }
+
+    // Add this method to verify raid mobs exist and respawn them if needed
+    private void verifyAndRespawnRaidMobs(ActiveRaid raid) {
+        List<UUID> entitiesToRemove = new ArrayList<>();
+        List<UUID> currentEntities = new ArrayList<>(raid.getRaiderEntities());
+        
+        // Check which entities are missing
+        for (UUID entityId : currentEntities) {
+            boolean found = false;
+            for (World world : plugin.getServer().getWorlds()) {
+                for (Entity entity : world.getEntities()) {
+                    if (entity.getUniqueId().equals(entityId) && entity.isValid() && !entity.isDead()) {
+                        found = true;
+                        break;
+                    }
+                }
+                if (found) break;
+            }
+            
+            if (!found) {
+                entitiesToRemove.add(entityId);
+            }
+        }
+        
+        // Remove missing entities
+        for (UUID entityId : entitiesToRemove) {
+            raid.removeRaiderEntity(entityId);
+        }
+        
+        // If too many entities are missing, respawn them
+        if (entitiesToRemove.size() > 0 && raid.getRaiderEntities().size() < 3) {
+            plugin.getLogger().info("Respawning raid mobs for raid " + raid.getId());
+            spawnRaidMobs(raid, raid.getLocation());
+        }
+    }
+
+    // Add this method to unload chunks when raid ends
+    public void unloadRaidChunks(ActiveRaid raid) {
+        Location raidLocation = raid.getLocation();
+        if (raidLocation == null) return;
+        
+        World world = raidLocation.getWorld();
+        int centerX = raidLocation.getBlockX() >> 4;
+        int centerZ = raidLocation.getBlockZ() >> 4;
+        
+        for (int x = centerX - 2; x <= centerX + 2; x++) {
+            for (int z = centerZ - 2; z <= centerZ + 2; z++) {
+                world.setChunkForceLoaded(x, z, false);
+            }
+        }
     }
 }

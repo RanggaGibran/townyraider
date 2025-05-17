@@ -148,6 +148,9 @@ public class RaidManager {
         // Spawn raid mobs at the location
         plugin.getRaiderEntityManager().spawnRaidMobs(raid, raidLocation);
         
+        // After spawning raid mobs, keep the chunks loaded
+        plugin.getRaiderEntityManager().keepRaidChunksLoaded(raid);
+        
         // Create visual effects for the raid
         plugin.getVisualEffectsManager().createRaidBossBar(raid);
         plugin.getVisualEffectsManager().createRaidBorderEffects(raid);
@@ -175,6 +178,9 @@ public class RaidManager {
             
             // Clean up raid mobs
             plugin.getRaiderEntityManager().cleanupRaidMobs(raidId);
+            
+            // Make sure to unload chunks at the end
+            plugin.getRaiderEntityManager().unloadRaidChunks(raid);
             
             // Clean up visual effects
             plugin.getVisualEffectsManager().removeRaidBossBar(raidId);

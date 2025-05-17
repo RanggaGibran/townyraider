@@ -8,6 +8,7 @@ import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.World;
 import org.bukkit.block.Block;
+import org.bukkit.block.Chest;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Mob;
@@ -22,6 +23,7 @@ import org.bukkit.util.Vector;
 import com.palmergames.bukkit.towny.object.Town;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -68,35 +70,54 @@ public class SimpleAiManager {
                     return;
                 }
                 
-                if (shouldRetreat(zombie)) {
-                    handleRetreat(zombie);
-                    return;
+                // Clear any targeting that might have occurred
+                if (zombie instanceof Mob) {
+                    ((Mob) zombie).setTarget(null);
                 }
-
+                
                 if (isRetreating(zombie)) {
                     return;
                 }
                 
                 Location targetLocation = targetLocations.get(zombie.getUniqueId());
+                
+                // Increase the chance to find a new target to make zombies more active in finding valuables
                 if (targetLocation == null || zombie.getLocation().distance(targetLocation) < 2.0 
-                        || Math.random() < 0.05) {
-                    Location newTarget = findValuableBlockLocation(zombie, raid);
-                    if (newTarget != null) {
-                        targetLocations.put(zombie.getUniqueId(), newTarget);
+                        || Math.random() < 0.15) { // Increased from 0.05
+                    
+                    // First try to find chests - prioritize chests over blocks
+                    Chest nearbyChest = findNearbyChest(zombie.getLocation(), TARGET_SEARCH_RADIUS);
+                    if (nearbyChest != null) {
+                        Location chestLoc = nearbyChest.getLocation();
+                        targetLocations.put(zombie.getUniqueId(), chestLoc);
                         zombie.getPersistentDataContainer().set(
                             targetBlockKey, 
                             PersistentDataType.STRING, 
-                            newTarget.getWorld().getName() + "," + 
-                            newTarget.getBlockX() + "," + 
-                            newTarget.getBlockY() + "," + 
-                            newTarget.getBlockZ()
+                            chestLoc.getWorld().getName() + "," + 
+                            chestLoc.getBlockX() + "," + 
+                            chestLoc.getBlockY() + "," + 
+                            chestLoc.getBlockZ()
                         );
+                    } else {
+                        // If no chest, look for valuable blocks
+                        Location newTarget = findValuableBlockLocation(zombie, raid);
+                        if (newTarget != null) {
+                            targetLocations.put(zombie.getUniqueId(), newTarget);
+                            zombie.getPersistentDataContainer().set(
+                                targetBlockKey, 
+                                PersistentDataType.STRING, 
+                                newTarget.getWorld().getName() + "," + 
+                                newTarget.getBlockX() + "," + 
+                                newTarget.getBlockY() + "," + 
+                                newTarget.getBlockZ()
+                            );
+                        }
                     }
                 }
                 
                 if (targetLocation != null) {
                     if (zombie instanceof Mob) {
-                        ((Mob) zombie).setTarget(null);
+                        ((Mob) zombie).setTarget(null); // Always clear target
                         Location finalTarget = targetLocation.clone();
                         new BukkitRunnable() {
                             @Override
@@ -105,15 +126,22 @@ public class SimpleAiManager {
                                     this.cancel();
                                     return;
                                 }
+                                
+                                // Make zombie move faster toward target to make it more effective
                                 zombie.teleport(zombie.getLocation().add(
-                                    finalTarget.clone().subtract(zombie.getLocation()).toVector().normalize().multiply(0.3)
+                                    finalTarget.clone().subtract(zombie.getLocation()).toVector().normalize().multiply(0.35)
                                 ));
                             }
                         }.runTaskTimer(plugin, 0L, 5L);
                         
                         // If close to target block, attempt to steal
                         if (zombie.getLocation().distanceSquared(targetLocation) <= 4.0) {
-                            handleBlockStealing(zombie, targetLocation.getBlock(), raid);
+                            Block targetBlock = targetLocation.getBlock();
+                            if (targetBlock.getState() instanceof Chest) {
+                                plugin.getStealingManager().attemptToStealFromChest(zombie, (Chest)targetBlock.getState(), raid);
+                            } else {
+                                handleBlockStealing(zombie, targetBlock, raid);
+                            }
                         }
                     }
                 }
@@ -122,6 +150,42 @@ public class SimpleAiManager {
         
         aiTask.runTaskTimer(plugin, 5L, 20L);
         aiTasks.put(zombie.getUniqueId(), aiTask);
+    }
+
+    // Add this helper method to find nearby chests
+    private Chest findNearbyChest(Location center, int radius) {
+        Set<Material> chestTypes = Set.of(Material.CHEST, Material.TRAPPED_CHEST);
+        List<Block> chestBlocks = new ArrayList<>();
+        
+        for (int x = -radius; x <= radius; x++) {
+            for (int y = -radius/2; y <= radius/2; y++) {
+                for (int z = -radius; z <= radius; z++) {
+                    Block block = center.getWorld().getBlockAt(
+                            center.getBlockX() + x, 
+                            center.getBlockY() + y, 
+                            center.getBlockZ() + z);
+                    
+                    if (chestTypes.contains(block.getType())) {
+                        chestBlocks.add(block);
+                    }
+                }
+            }
+        }
+        
+        if (chestBlocks.isEmpty()) {
+            return null;
+        }
+        
+        // Return the closest chest
+        Block closest = chestBlocks.stream()
+            .min(Comparator.comparingDouble(b -> 
+                b.getLocation().distanceSquared(center)))
+            .orElse(null);
+        
+        if (closest != null && closest.getState() instanceof Chest) {
+            return (Chest) closest.getState();
+        }
+        return null;
     }
     
     public void applySkeletonAI(Skeleton skeleton, ActiveRaid raid, UUID protectTarget) {
