@@ -3,6 +3,7 @@ package id.rnggagib.raid;
 import com.palmergames.bukkit.towny.object.Town;
 import id.rnggagib.TownyRaider;
 import id.rnggagib.towny.TownyHandler;
+import id.rnggagib.persistence.PersistenceManager;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.scheduler.BukkitTask;
@@ -24,13 +25,38 @@ public class RaidManager {
     private boolean raidsEnabled = true;
     private BukkitTask schedulerTask;
     private TownyHandler townyHandler;
+    private PersistenceManager persistenceManager;
     
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm");
 
     public RaidManager(TownyRaider plugin) {
         this.plugin = plugin;
-        this.townyHandler = new TownyHandler(plugin);
+        this.townyHandler = plugin.getTownyHandler();
+        this.persistenceManager = plugin.getPersistenceManager();
+        loadPersistentData();
         startRaidScheduler();
+    }
+
+    private void loadPersistentData() {
+        // Load active raids
+        List<ActiveRaid> savedRaids = persistenceManager.loadActiveRaids();
+        for (ActiveRaid raid : savedRaids) {
+            activeRaids.put(raid.getId(), raid);
+            plugin.getLogger().info("Loaded active raid for town: " + raid.getTownName());
+        }
+        
+        // Load raid history
+        List<RaidHistory> savedHistory = persistenceManager.loadRaidHistory();
+        raidHistory.addAll(savedHistory);
+        plugin.getLogger().info("Loaded " + savedHistory.size() + " historical raid records");
+        
+        // Load town cooldowns
+        Map<String, LocalDateTime> savedCooldowns = persistenceManager.loadTownCooldowns();
+        townyHandler.setTownRaidCooldowns(savedCooldowns);
+        plugin.getLogger().info("Loaded " + savedCooldowns.size() + " town cooldown records");
+        
+        // Cleanup expired cooldowns
+        persistenceManager.cleanupExpiredCooldowns();
     }
 
     public void startRaidScheduler() {
@@ -216,10 +242,25 @@ public class RaidManager {
         return townyHandler;
     }
 
+    public void savePersistentData() {
+        // Save active raids
+        persistenceManager.saveActiveRaids(new ArrayList<>(activeRaids.values()));
+        
+        // Save raid history
+        persistenceManager.saveRaidHistory(raidHistory);
+        
+        // Save town cooldowns
+        persistenceManager.saveTownCooldowns(townyHandler.getTownRaidCooldowns());
+        
+        plugin.getLogger().info("Saved raid data to disk");
+    }
+
     public void shutdown() {
         if (schedulerTask != null) {
             schedulerTask.cancel();
         }
+        
+        savePersistentData();
         
         for (ActiveRaid raid : activeRaids.values()) {
             endRaid(raid.getId());

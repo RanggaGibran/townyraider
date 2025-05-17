@@ -264,4 +264,13 @@ public class TownyHandler {
         Town locationTown = getTownAt(location);
         return locationTown != null && locationTown.getName().equals(town.getName());
     }
+
+    public Map<String, LocalDateTime> getTownRaidCooldowns() {
+        return new HashMap<>(townRaidCooldowns);
+    }
+
+    public void setTownRaidCooldowns(Map<String, LocalDateTime> cooldowns) {
+        townRaidCooldowns.clear();
+        townRaidCooldowns.putAll(cooldowns);
+    }
 }

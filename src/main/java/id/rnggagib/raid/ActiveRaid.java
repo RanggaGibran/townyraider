@@ -10,7 +10,7 @@ import java.util.UUID;
 public class ActiveRaid {
     private final UUID id;
     private final String townName;
-    private final LocalDateTime startTime;
+    private LocalDateTime startTime;
     private int stolenItems;
     private final List<UUID> raiderEntities;
     private Location location;
@@ -34,9 +34,17 @@ public class ActiveRaid {
     public LocalDateTime getStartTime() {
         return startTime;
     }
+    
+    public void setStartTime(LocalDateTime startTime) {
+        this.startTime = startTime;
+    }
 
     public int getStolenItems() {
         return stolenItems;
+    }
+    
+    public void setStolenItems(int stolenItems) {
+        this.stolenItems = stolenItems;
     }
 
     public void incrementStolenItems(int amount) {

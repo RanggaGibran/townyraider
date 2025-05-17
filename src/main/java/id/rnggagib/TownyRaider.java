@@ -13,6 +13,7 @@ import id.rnggagib.entity.StealingManager;
 import id.rnggagib.entity.RaiderEntityListener;
 import id.rnggagib.effects.VisualEffectsManager;
 import id.rnggagib.protection.ProtectionManager;
+import id.rnggagib.persistence.PersistenceManager;
 
 public class TownyRaider extends JavaPlugin {
     private static final Logger LOGGER = Logger.getLogger("townyraider");
@@ -25,6 +26,7 @@ public class TownyRaider extends JavaPlugin {
     private StealingManager stealingManager;
     private VisualEffectsManager visualEffectsManager;
     private ProtectionManager protectionManager;
+    private PersistenceManager persistenceManager;
 
     @Override
     public void onEnable() {
@@ -32,6 +34,8 @@ public class TownyRaider extends JavaPlugin {
         configManager = new ConfigManager(this);
         messageManager = new MessageManager(this);
         commandManager = new CommandManager(this);
+        
+        persistenceManager = new PersistenceManager(this);
         
         raiderEntityManager = new RaiderEntityManager(this);
         stealingManager = new StealingManager(this);
@@ -59,6 +63,10 @@ public class TownyRaider extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        if (raidManager != null) {
+            raidManager.shutdown();
+        }
+        
         if (protectionManager != null) {
             protectionManager.cleanup();
         }
@@ -69,10 +77,6 @@ public class TownyRaider extends JavaPlugin {
         
         if (raiderEntityManager != null) {
             raiderEntityManager.removeAllRaidMobs();
-        }
-        
-        if (raidManager != null) {
-            raidManager.shutdown();
         }
         
         if (messageManager != null) {
@@ -116,6 +120,10 @@ public class TownyRaider extends JavaPlugin {
     
     public ProtectionManager getProtectionManager() {
         return protectionManager;
+    }
+    
+    public PersistenceManager getPersistenceManager() {
+        return persistenceManager;
     }
     
     public void reloadPlugin() {
