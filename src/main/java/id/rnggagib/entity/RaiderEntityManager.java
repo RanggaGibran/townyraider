@@ -101,6 +101,24 @@ public class RaiderEntityManager {
             zombie.getAttribute(Attribute.GENERIC_MOVEMENT_SPEED).setBaseValue(speed);
         }
         
+        // Set mob properties from config
+        zombie.setBaby(true); // Make it a baby zombie
+        zombie.setRemoveWhenFarAway(false);
+        zombie.setPersistent(true);
+        
+        // Make immune to fire
+        zombie.setFireTicks(0);
+        zombie.addPotionEffect(new org.bukkit.potion.PotionEffect(org.bukkit.potion.PotionEffectType.FIRE_RESISTANCE, Integer.MAX_VALUE, 1, false, false));
+        zombie.setVisualFire(false); // Don't show fire effect
+        zombie.setInvisible(false);
+        
+        // Apply metadata to identify this as a raid entity
+        zombie.getPersistentDataContainer().set(
+            raiderKey, 
+            PersistentDataType.STRING, 
+            "baby-zombie"
+        );
+        
         markAsRaider(zombie, raid.getId(), RAIDER_TYPE_ZOMBIE);
         
         plugin.getVisualEffectsManager().applyGlowEffect(zombie, "baby-zombie");
@@ -133,6 +151,23 @@ public class RaiderEntityManager {
             double damage = config.getDouble("damage", 3.0);
             skeleton.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE).setBaseValue(damage);
         }
+        
+        // Set mob properties from config
+        skeleton.setRemoveWhenFarAway(false);
+        skeleton.setPersistent(true);
+        
+        // Make immune to fire
+        skeleton.setFireTicks(0);
+        skeleton.addPotionEffect(new org.bukkit.potion.PotionEffect(org.bukkit.potion.PotionEffectType.FIRE_RESISTANCE, Integer.MAX_VALUE, 1, false, false)); // Fire resistance
+        skeleton.setVisualFire(false); // Don't show fire effect
+        skeleton.setInvisible(false);
+        
+        // Apply metadata to identify this as a raid entity
+        skeleton.getPersistentDataContainer().set(
+            raiderKey, 
+            PersistentDataType.STRING, 
+            "skeleton"
+        );
         
         markAsRaider(skeleton, raid.getId(), RAIDER_TYPE_SKELETON);
         

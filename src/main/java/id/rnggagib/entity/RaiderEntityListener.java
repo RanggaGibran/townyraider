@@ -28,13 +28,23 @@ public class RaiderEntityListener implements Listener {
         this.plugin = plugin;
     }
     
-    @EventHandler(priority = EventPriority.HIGH)
+    @EventHandler(priority = EventPriority.HIGHEST)
     public void onEntityDamage(EntityDamageEvent event) {
+        // Skip if already cancelled
         if (event.isCancelled()) return;
         
+        // Check if entity is a raider
         if (plugin.getRaiderEntityManager().isRaider(event.getEntity())) {
-            if (event.getCause() == EntityDamageEvent.DamageCause.FALL) {
+            // Cancel fire and burning damage
+            if (event.getCause() == EntityDamageEvent.DamageCause.FIRE || 
+                event.getCause() == EntityDamageEvent.DamageCause.FIRE_TICK ||
+                event.getCause() == EntityDamageEvent.DamageCause.LAVA ||
+                event.getCause() == EntityDamageEvent.DamageCause.HOT_FLOOR) {
+                
                 event.setCancelled(true);
+                
+                // Ensure fire is visually removed
+                event.getEntity().setFireTicks(0);
             }
         }
     }
