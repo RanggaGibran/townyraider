@@ -126,6 +126,9 @@ public class RaidManager {
         plugin.getVisualEffectsManager().createRaidBossBar(raid);
         plugin.getVisualEffectsManager().createRaidBorderEffects(raid);
         
+        // Setup protection for the raid
+        plugin.getProtectionManager().setupProtectionForRaid(raid);
+        
         Map<String, String> placeholders = new HashMap<>();
         placeholders.put("town", town.getName());
         townyHandler.notifyTownMembers(town, "raid-start", placeholders);
@@ -141,6 +144,9 @@ public class RaidManager {
     public void endRaid(UUID raidId) {
         ActiveRaid raid = activeRaids.remove(raidId);
         if (raid != null) {
+            // Cleanup raid protection
+            plugin.getProtectionManager().cleanupRaidProtection(raid);
+            
             // Clean up raid mobs
             plugin.getRaiderEntityManager().cleanupRaidMobs(raidId);
             

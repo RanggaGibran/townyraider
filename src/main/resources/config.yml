@@ -124,3 +124,46 @@ messages:
   status-no-raids: "<gray>No active raids at the moment.</gray>"
   raids-toggled: "<yellow>Raid functionality has been {status}.</yellow>"
   raid-bossbar-title: "<bold><gold>Raid on {town}</gold></bold>"
+  raid-protection-block-break: "<red>This block is protected during the raid!"
+  raid-protection-block-place: "<red>You cannot place blocks in this area during a raid!"
+  entering-raid-zone: "<dark_red>⚠ <red>You are entering an area under raid!"
+
+# Protection settings
+protection:
+  # Radius around raid location that gets special protection (in blocks)
+  raid-protection-radius: 50
+  
+  # Whether to provide defense bonuses during raids
+  enable-defense-bonus: true
+  
+  # Materials that are protected during raids (can only be broken by raid mobs)
+  protected-materials:
+    - "CHEST"
+    - "BARREL"
+    - "FURNACE"
+    - "BLAST_FURNACE"
+    - "SMOKER"
+    - "BREWING_STAND"
+    - "ENCHANTING_TABLE"
+    - "BEACON"
+    - "ANVIL"
+    - "LODESTONE"
+    - "DISPENSER"
+    - "DROPPER"
+    - "HOPPER"
+    - "SHULKER_BOX"
+  
+  # Materials that players can place during raids for defense
+  defensive-blocks:
+    - "COBBLESTONE"
+    - "DIRT"
+    - "STONE"
+    - "OAK_PLANKS"
+    - "SPRUCE_PLANKS"
+    - "BIRCH_PLANKS"
+    - "JUNGLE_PLANKS"
+    - "ACACIA_PLANKS"
+    - "DARK_OAK_PLANKS"
+    - "FENCE"
+    - "OAK_FENCE"
+    - "IRON_BARS"

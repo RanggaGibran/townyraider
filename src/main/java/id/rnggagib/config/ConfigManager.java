@@ -27,6 +27,8 @@ public class ConfigManager {
     private final Set<Material> stealableBlocks = new HashSet<>();
     private final Set<Material> stealableItems = new HashSet<>();
     private final List<String> raidTimes = new ArrayList<>();
+    private Set<Material> protectedMaterials = new HashSet<>();
+    private Set<Material> defensiveBlocks = new HashSet<>();
 
     public ConfigManager(TownyRaider plugin) {
         this.plugin = plugin;
@@ -52,6 +54,8 @@ public class ConfigManager {
         loadStealableBlocks();
         loadStealableItems();
         loadRaidTimes();
+        loadProtectedMaterials();
+        loadDefensiveBlocks();
     }
     
     public void saveConfig() {
@@ -107,6 +111,32 @@ public class ConfigManager {
             }
         } else {
             raidTimes.addAll(config.getStringList("raids.schedule.fixed-times"));
+        }
+    }
+    
+    private void loadProtectedMaterials() {
+        protectedMaterials.clear();
+        List<String> materialStrings = config.getStringList("protection.protected-materials");
+        for (String materialString : materialStrings) {
+            try {
+                Material material = Material.valueOf(materialString);
+                protectedMaterials.add(material);
+            } catch (IllegalArgumentException e) {
+                plugin.getLogger().warning("Invalid material in protected materials: " + materialString);
+            }
+        }
+    }
+
+    private void loadDefensiveBlocks() {
+        defensiveBlocks.clear();
+        List<String> blockStrings = config.getStringList("protection.defensive-blocks");
+        for (String blockString : blockStrings) {
+            try {
+                Material material = Material.valueOf(blockString);
+                defensiveBlocks.add(material);
+            } catch (IllegalArgumentException e) {
+                plugin.getLogger().warning("Invalid material in defensive blocks: " + blockString);
+            }
         }
     }
     
@@ -220,5 +250,21 @@ public class ConfigManager {
     
     public FileConfiguration getConfig() {
         return config;
+    }
+    
+    public Set<Material> getProtectedMaterials() {
+        return protectedMaterials;
+    }
+
+    public Set<Material> getAllowedDefensiveBlocks() {
+        return defensiveBlocks;
+    }
+
+    public int getRaidProtectionRadius() {
+        return config.getInt("protection.raid-protection-radius", 50);
+    }
+
+    public boolean isRaidDefenseBonusEnabled() {
+        return config.getBoolean("protection.enable-defense-bonus", true);
     }
 }

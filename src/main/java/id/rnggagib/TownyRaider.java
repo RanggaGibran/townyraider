@@ -12,6 +12,7 @@ import id.rnggagib.entity.RaiderEntityManager;
 import id.rnggagib.entity.StealingManager;
 import id.rnggagib.entity.RaiderEntityListener;
 import id.rnggagib.effects.VisualEffectsManager;
+import id.rnggagib.protection.ProtectionManager;
 
 public class TownyRaider extends JavaPlugin {
     private static final Logger LOGGER = Logger.getLogger("townyraider");
@@ -23,6 +24,7 @@ public class TownyRaider extends JavaPlugin {
     private RaiderEntityManager raiderEntityManager;
     private StealingManager stealingManager;
     private VisualEffectsManager visualEffectsManager;
+    private ProtectionManager protectionManager;
 
     @Override
     public void onEnable() {
@@ -37,6 +39,7 @@ public class TownyRaider extends JavaPlugin {
         
         if (getServer().getPluginManager().isPluginEnabled("Towny")) {
             townyHandler = new TownyHandler(this);
+            protectionManager = new ProtectionManager(this);
             raidManager = new RaidManager(this);
             
             getServer().getPluginManager().registerEvents(new RaiderEntityListener(this), this);
@@ -56,6 +59,10 @@ public class TownyRaider extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        if (protectionManager != null) {
+            protectionManager.cleanup();
+        }
+        
         if (visualEffectsManager != null) {
             visualEffectsManager.cleanup();
         }
@@ -105,6 +112,10 @@ public class TownyRaider extends JavaPlugin {
     
     public VisualEffectsManager getVisualEffectsManager() {
         return visualEffectsManager;
+    }
+    
+    public ProtectionManager getProtectionManager() {
+        return protectionManager;
     }
     
     public void reloadPlugin() {
