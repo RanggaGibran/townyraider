@@ -10,10 +10,12 @@ import net.kyori.adventure.title.Title;
 import org.bukkit.Sound;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
+import com.palmergames.bukkit.towny.object.Town;
 
 import java.time.Duration;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 public class MessageManager {
@@ -83,6 +85,14 @@ public class MessageManager {
         for (Player player : players) {
             adventure.player(player).sendMessage(message);
         }
+    }
+
+    /**
+     * Send a message to all online members of a town
+     */
+    public void sendToTown(Town town, String messageKey, Map<String, String> placeholders) {
+        List<Player> townMembers = plugin.getTownyHandler().getOnlineTownMembers(town);
+        sendToPlayers(townMembers, messageKey, placeholders);
     }
 
     public void sendTitle(Player player, String titleKey, String subtitleKey) {

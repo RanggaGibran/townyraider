@@ -5,7 +5,6 @@ import id.rnggagib.raid.ActiveRaid;
 import id.rnggagib.towny.TownyHandler;
 
 import com.palmergames.bukkit.towny.object.Town;
-import com.palmergames.bukkit.towny.object.TownyEconomyHandler;
 
 import org.bukkit.entity.Player;
 import net.milkbowl.vault.economy.Economy;
