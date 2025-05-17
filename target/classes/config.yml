@@ -1,0 +1,104 @@
+# TownyRaider Configuration
+
+# General plugin settings
+general:
+  debug: false
+  metrics: true
+
+# Raid settings
+raids:
+  # Timing settings (cron expression format or specific times)
+  schedule:
+    enabled: true
+    # Use either cron or fixed times
+    use-cron: false
+    # Cron expression (minute hour day-of-month month day-of-week)
+    cron: "0 */3 * * *"  # Every 3 hours at the start of the hour
+    # Fixed times (24-hour format)
+    fixed-times:
+      - "12:00"
+      - "18:00"
+      - "00:00"
+  
+  # Raid conditions
+  conditions:
+    minimum-online-town-members: 1
+    maximum-chunk-distance: 5
+    minimum-town-wealth: 1000
+    minimum-town-age-days: 1
+    
+  # Raid duration in minutes
+  duration: 10
+  
+  # Cooldown between raids for the same town (in hours)
+  town-cooldown: 24
+
+# Mob settings
+mobs:
+  baby-zombie:
+    name: "<gradient:red:gold>Raider Zombie</gradient>"
+    health: 10
+    speed: 0.3
+    steal-delay: 20
+    max-steals: 5
+    glow-color: "RED"
+  
+  skeleton:
+    name: "<gradient:gray:white>Guardian Skeleton</gradient>"
+    health: 15
+    damage: 3
+    speed: 0.25
+    protection-radius: 10
+    count-per-zombie: 2
+    glow-color: "WHITE"
+
+# Blocks and items that can be stolen
+stealable:
+  blocks:
+    - "DIAMOND_BLOCK"
+    - "GOLD_BLOCK"
+    - "EMERALD_BLOCK"
+    - "IRON_BLOCK"
+    - "NETHERITE_BLOCK"
+  
+  # Maximum number of items per category to steal from chests
+  chest-stealing:
+    enabled: true
+    valuable-items:
+      - "DIAMOND"
+      - "EMERALD"
+      - "GOLD_INGOT"
+      - "IRON_INGOT"
+      - "NETHERITE_INGOT"
+    max-items-per-category: 5
+
+# Notification settings
+notifications:
+  # Time before raid in minutes to send warning
+  pre-raid-warning: 5
+  
+  # Notification radius (in chunks)
+  radius: 3
+  
+  # Sound effects
+  sounds:
+    pre-raid: "ENTITY_WITHER_SPAWN"
+    raid-start: "ENTITY_ENDER_DRAGON_GROWL"
+    raid-end: "ENTITY_PLAYER_LEVELUP"
+
+# Messages (using MiniMessage format)
+messages:
+  prefix: "<dark_red>[<gold>TownyRaider<dark_red>]</gold> "
+  pre-raid-warning: "<bold><red>WARNING!</red></bold> Your town will be raided in {minutes} minutes!"
+  raid-start: "<bold><red>RAID STARTED!</red></bold> Defend your town from the raiders!"
+  raid-end: "<green>The raid has ended. Your town {status}."
+  raid-successful: "lost <red>{stolen}</red> resources"
+  raid-defended: "successfully defended against raiders"
+  no-permission: "<red>You don't have permission to use this command. Required: {permission}</red>"
+  unknown-command: "<red>Unknown command: {command}</red>"
+  config-reloaded: "<green>Configuration reloaded successfully!</green>"
+  raid-status: "Raid status information will be shown here"
+  raids-toggled: "<yellow>Raid functionality has been toggled</yellow>"
+  help-header: "<gold>----- TownyRaider Help (v{version}) -----</gold>"
+  help-command: "<yellow>{command}</yellow> - <gray>{description}</gray>"
+  help-footer: "<gold>-----------------------------</gold>"
