@@ -90,8 +90,9 @@ public class RaiderEntityManager {
         zombie.setCustomName(config.getString("name", "Raider Zombie"));
         zombie.setCustomNameVisible(true);
         
+        // Significantly increase health
         if (zombie.getAttribute(Attribute.GENERIC_MAX_HEALTH) != null) {
-            double health = config.getDouble("health", 10.0);
+            double health = config.getDouble("health", 25.0); // Increased from 10.0
             zombie.getAttribute(Attribute.GENERIC_MAX_HEALTH).setBaseValue(health);
             zombie.setHealth(health);
         }
@@ -100,6 +101,30 @@ public class RaiderEntityManager {
             double speed = config.getDouble("speed", 0.3);
             zombie.getAttribute(Attribute.GENERIC_MOVEMENT_SPEED).setBaseValue(speed);
         }
+        
+        // Add armor for damage reduction
+        zombie.getEquipment().setHelmet(new org.bukkit.inventory.ItemStack(org.bukkit.Material.LEATHER_HELMET));
+        zombie.getEquipment().setChestplate(new org.bukkit.inventory.ItemStack(org.bukkit.Material.LEATHER_CHESTPLATE));
+        zombie.getEquipment().setItemInMainHand(new org.bukkit.inventory.ItemStack(org.bukkit.Material.WOODEN_SWORD));
+        
+        // Set all drop chances to 0
+        zombie.getEquipment().setHelmetDropChance(0f);
+        zombie.getEquipment().setChestplateDropChance(0f);
+        zombie.getEquipment().setItemInMainHandDropChance(0f);
+        
+        // Add knockback resistance
+        if (zombie.getAttribute(Attribute.GENERIC_KNOCKBACK_RESISTANCE) != null) {
+            zombie.getAttribute(Attribute.GENERIC_KNOCKBACK_RESISTANCE).setBaseValue(0.5); // 50% knockback resistance
+        }
+        
+        // Add damage resistance effect
+        zombie.addPotionEffect(new org.bukkit.potion.PotionEffect(
+            org.bukkit.potion.PotionEffectType.DAMAGE_RESISTANCE, 
+            Integer.MAX_VALUE, 
+            1, // Resistance II (40% damage reduction)
+            false, 
+            false)
+        );
         
         // Set mob properties from config
         zombie.setBaby(true); // Make it a baby zombie
@@ -136,8 +161,9 @@ public class RaiderEntityManager {
         skeleton.setCustomName(config.getString("name", "Guardian Skeleton"));
         skeleton.setCustomNameVisible(true);
         
+        // Significantly increase health
         if (skeleton.getAttribute(Attribute.GENERIC_MAX_HEALTH) != null) {
-            double health = config.getDouble("health", 15.0);
+            double health = config.getDouble("health", 30.0); // Increased from 15.0
             skeleton.getAttribute(Attribute.GENERIC_MAX_HEALTH).setBaseValue(health);
             skeleton.setHealth(health);
         }
@@ -151,6 +177,32 @@ public class RaiderEntityManager {
             double damage = config.getDouble("damage", 3.0);
             skeleton.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE).setBaseValue(damage);
         }
+        
+        // Add armor for damage reduction
+        skeleton.getEquipment().setHelmet(new org.bukkit.inventory.ItemStack(org.bukkit.Material.CHAINMAIL_HELMET));
+        skeleton.getEquipment().setChestplate(new org.bukkit.inventory.ItemStack(org.bukkit.Material.CHAINMAIL_CHESTPLATE));
+        skeleton.getEquipment().setLeggings(new org.bukkit.inventory.ItemStack(org.bukkit.Material.CHAINMAIL_LEGGINGS));
+        skeleton.getEquipment().setItemInMainHand(new org.bukkit.inventory.ItemStack(org.bukkit.Material.BOW));
+        
+        // Set all drop chances to 0
+        skeleton.getEquipment().setHelmetDropChance(0f);
+        skeleton.getEquipment().setChestplateDropChance(0f);
+        skeleton.getEquipment().setLeggingsDropChance(0f);
+        skeleton.getEquipment().setItemInMainHandDropChance(0f);
+        
+        // Add knockback resistance
+        if (skeleton.getAttribute(Attribute.GENERIC_KNOCKBACK_RESISTANCE) != null) {
+            skeleton.getAttribute(Attribute.GENERIC_KNOCKBACK_RESISTANCE).setBaseValue(0.3); // 30% knockback resistance
+        }
+        
+        // Add damage resistance effect
+        skeleton.addPotionEffect(new org.bukkit.potion.PotionEffect(
+            org.bukkit.potion.PotionEffectType.DAMAGE_RESISTANCE, 
+            Integer.MAX_VALUE, 
+            1, // Resistance II (40% damage reduction)
+            false, 
+            false)
+        );
         
         // Set mob properties from config
         skeleton.setRemoveWhenFarAway(false);

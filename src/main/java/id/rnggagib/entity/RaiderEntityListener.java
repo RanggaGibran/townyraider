@@ -3,6 +3,7 @@ package id.rnggagib.entity;
 import id.rnggagib.TownyRaider;
 import id.rnggagib.raid.ActiveRaid;
 
+import org.bukkit.attribute.Attribute;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
@@ -89,6 +90,36 @@ public class RaiderEntityListener implements Listener {
                 // Prevent raiders from damaging each other
                 event.setCancelled(true);
                 return;
+            }
+        }
+    }
+    
+    @EventHandler(priority = EventPriority.NORMAL)
+    public void onEntityDamageByPlayer(EntityDamageByEntityEvent event) {
+        if (event.isCancelled()) return;
+        
+        Entity entity = event.getEntity();
+        
+        if (plugin.getRaiderEntityManager().isRaider(entity) && entity instanceof LivingEntity) {
+            LivingEntity raider = (LivingEntity) entity;
+            
+            // If health drops below 30%, give regeneration for recovery
+            if (raider.getHealth() - event.getFinalDamage() < raider.getAttribute(Attribute.GENERIC_MAX_HEALTH).getValue() * 0.3) {
+                raider.addPotionEffect(new org.bukkit.potion.PotionEffect(
+                    org.bukkit.potion.PotionEffectType.REGENERATION, 
+                    100, // 5 seconds
+                    1, // Regeneration II
+                    false, 
+                    true)
+                );
+            }
+            
+            // Cap damage to prevent one-shot kills
+            double maxDamagePercent = 0.4; // Max 40% health in one hit
+            double maxDamage = raider.getAttribute(Attribute.GENERIC_MAX_HEALTH).getValue() * maxDamagePercent;
+            
+            if (event.getDamage() > maxDamage) {
+                event.setDamage(maxDamage);
             }
         }
     }

@@ -78,6 +78,46 @@ public class PersistenceManager {
                 raidObj.add("location", locObj);
             }
             
+            // Save metadata that can be serialized
+            if (!raid.getAllMetadata().isEmpty()) {
+                JsonObject metadataObj = new JsonObject();
+                
+                for (Map.Entry<String, Object> entry : raid.getAllMetadata().entrySet()) {
+                    String key = entry.getKey();
+                    Object value = entry.getValue();
+                    
+                    // Handle different types that can be serialized
+                    if (value instanceof String) {
+                        metadataObj.addProperty(key + "_string", (String)value);
+                    } 
+                    else if (value instanceof Number) {
+                        metadataObj.addProperty(key + "_number", (Number)value);
+                    }
+                    else if (value instanceof Boolean) {
+                        metadataObj.addProperty(key + "_boolean", (Boolean)value);
+                    }
+                    else if (value instanceof List) {
+                        // For location lists (common in this plugin)
+                        if (!((List<?>) value).isEmpty() && ((List<?>) value).get(0) instanceof Location) {
+                            JsonArray locArray = new JsonArray();
+                            for (Location loc : (List<Location>)value) {
+                                JsonObject locObj = new JsonObject();
+                                locObj.addProperty("world", loc.getWorld().getName());
+                                locObj.addProperty("x", loc.getX());
+                                locObj.addProperty("y", loc.getY());
+                                locObj.addProperty("z", loc.getZ());
+                                locArray.add(locObj);
+                            }
+                            metadataObj.add(key + "_locations", locArray);
+                        }
+                    }
+                }
+                
+                if (metadataObj.size() > 0) {
+                    raidObj.add("metadata", metadataObj);
+                }
+            }
+            
             raidsArray.add(raidObj);
         }
         
@@ -129,6 +169,49 @@ public class PersistenceManager {
                     for (JsonElement entityElement : entitiesArray) {
                         UUID entityId = UUID.fromString(entityElement.getAsString());
                         raid.addRaiderEntity(entityId);
+                    }
+                }
+                
+                // Load metadata
+                if (raidObj.has("metadata")) {
+                    JsonObject metadataObj = raidObj.get("metadata").getAsJsonObject();
+                    
+                    for (String key : metadataObj.keySet()) {
+                        // Parse the key to determine the type
+                        if (key.endsWith("_string")) {
+                            String actualKey = key.substring(0, key.length() - 7);
+                            raid.setMetadata(actualKey, metadataObj.get(key).getAsString());
+                        }
+                        else if (key.endsWith("_number")) {
+                            String actualKey = key.substring(0, key.length() - 7);
+                            raid.setMetadata(actualKey, metadataObj.get(key).getAsNumber());
+                        }
+                        else if (key.endsWith("_boolean")) {
+                            String actualKey = key.substring(0, key.length() - 8);
+                            raid.setMetadata(actualKey, metadataObj.get(key).getAsBoolean());
+                        }
+                        else if (key.endsWith("_locations")) {
+                            String actualKey = key.substring(0, key.length() - 10);
+                            JsonArray locArray = metadataObj.get(key).getAsJsonArray();
+                            List<Location> locations = new ArrayList<>();
+                            
+                            for (JsonElement locElement : locArray) {
+                                JsonObject locObj = locElement.getAsJsonObject();
+                                String worldName = locObj.get("world").getAsString();
+                                World world = Bukkit.getWorld(worldName);
+                                
+                                if (world != null) {
+                                    double x = locObj.get("x").getAsDouble();
+                                    double y = locObj.get("y").getAsDouble();
+                                    double z = locObj.get("z").getAsDouble();
+                                    
+                                    Location location = new Location(world, x, y, z);
+                                    locations.add(location);
+                                }
+                            }
+                            
+                            raid.setMetadata(actualKey, locations);
+                        }
                     }
                 }
                 
