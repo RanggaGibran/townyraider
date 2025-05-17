@@ -7,7 +7,6 @@ import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
 import net.kyori.adventure.title.Title;
-import org.bukkit.Bukkit;
 import org.bukkit.Sound;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
@@ -16,7 +15,6 @@ import java.time.Duration;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.UUID;
 
 public class MessageManager {
     private final TownyRaider plugin;
@@ -95,7 +93,7 @@ public class MessageManager {
         Component title = format(plugin.getConfigManager().getMessage(titleKey), placeholders);
         Component subtitle = format(plugin.getConfigManager().getMessage(subtitleKey), placeholders);
         
-        Title.Times times = Title.Times.of(
+        Title.Times times = Title.Times.times(
             Duration.ofMillis(500),
             Duration.ofMillis(3500),
             Duration.ofMillis(1000)

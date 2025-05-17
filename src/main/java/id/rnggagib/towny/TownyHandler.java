@@ -2,13 +2,11 @@ package id.rnggagib.towny;
 
 import com.palmergames.bukkit.towny.TownyAPI;
 import com.palmergames.bukkit.towny.exceptions.NotRegisteredException;
-import com.palmergames.bukkit.towny.object.Nation;
 import com.palmergames.bukkit.towny.object.Resident;
 import com.palmergames.bukkit.towny.object.Town;
 import com.palmergames.bukkit.towny.object.TownBlock;
 import com.palmergames.bukkit.towny.object.TownyWorld;
 import id.rnggagib.TownyRaider;
-import id.rnggagib.message.MessageManager;
 import net.milkbowl.vault.economy.Economy;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
@@ -19,16 +17,13 @@ import org.bukkit.plugin.RegisteredServiceProvider;
 
 import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
 
 public class TownyHandler {
     private final TownyRaider plugin;
@@ -54,6 +49,13 @@ public class TownyHandler {
         
         economy = rsp.getProvider();
         return economy != null;
+    }
+
+    /**
+     * Get the economy provider
+     */
+    public Economy getEconomy() {
+        return economy;
     }
 
     public List<Town> getEligibleTownsForRaid() {

@@ -2,11 +2,8 @@ package id.rnggagib.command;
 
 import id.rnggagib.TownyRaider;
 import id.rnggagib.message.MessageManager;
-import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.TextDecoration;
 import org.bukkit.command.CommandSender;
 
-import java.util.HashMap;
 import java.util.Map;
 
 public class HelpCommand implements SubCommand {

@@ -1,8 +1,8 @@
 package id.rnggagib.entity;
 
 import id.rnggagib.TownyRaider;
+import id.rnggagib.entity.ai.SimpleAiManager;
 import id.rnggagib.raid.ActiveRaid;
-import id.rnggagib.raid.RaidManager;
 
 import org.bukkit.Location;
 import org.bukkit.NamespacedKey;
@@ -27,6 +27,7 @@ public class RaiderEntityManager {
     private final NamespacedKey raiderKey;
     private final NamespacedKey raidIdKey;
     private final NamespacedKey raiderTypeKey;
+    private final SimpleAiManager aiManager;
     
     public static final String METADATA_RAIDER = "townyraider.raider";
     public static final String METADATA_RAID_ID = "townyraider.raid_id";
@@ -40,6 +41,7 @@ public class RaiderEntityManager {
         this.raiderKey = new NamespacedKey(plugin, "raider");
         this.raidIdKey = new NamespacedKey(plugin, "raid_id");
         this.raiderTypeKey = new NamespacedKey(plugin, "raider_type");
+        this.aiManager = new SimpleAiManager(plugin);
     }
 
     public void spawnRaidMobs(ActiveRaid raid, Location location) {
@@ -51,7 +53,7 @@ public class RaiderEntityManager {
         ConfigurationSection zombieConfig = plugin.getConfigManager().getMobConfig("baby-zombie");
         ConfigurationSection skeletonConfig = plugin.getConfigManager().getMobConfig("skeleton");
         
-        int zombieCount = 2;
+        int zombieCount = zombieConfig.getInt("count", 2);
         int skeletonPerZombie = skeletonConfig.getInt("count-per-zombie", 2);
         
         List<LivingEntity> raiders = new ArrayList<>();
@@ -81,7 +83,8 @@ public class RaiderEntityManager {
         
         Zombie zombie = (Zombie) world.spawnEntity(location, EntityType.ZOMBIE);
         
-        zombie.setBaby(true);
+        // Using the setAge method instead of the deprecated setBaby
+        zombie.setAge(-2400); // Setting age to make it a baby zombie
         zombie.setCustomName(config.getString("name", "Raider Zombie"));
         zombie.setCustomNameVisible(true);
         
@@ -98,8 +101,9 @@ public class RaiderEntityManager {
         
         markAsRaider(zombie, raid.getId(), RAIDER_TYPE_ZOMBIE);
         
-        // Apply glow effect
         plugin.getVisualEffectsManager().applyGlowEffect(zombie, "baby-zombie");
+        
+        aiManager.applyRaiderAI(zombie, raid, RAIDER_TYPE_ZOMBIE);
         
         return zombie;
     }
@@ -132,17 +136,21 @@ public class RaiderEntityManager {
         
         skeleton.setMetadata("protectTarget", new FixedMetadataValue(plugin, protectTarget.getUniqueId().toString()));
         
-        // Apply glow effect
         plugin.getVisualEffectsManager().applyGlowEffect(skeleton, "skeleton");
+        
+        aiManager.applyRaiderAI(skeleton, raid, RAIDER_TYPE_SKELETON);
+        if (protectTarget != null) {
+            aiManager.applySkeletonAI(skeleton, raid, protectTarget.getUniqueId());
+        }
         
         return skeleton;
     }
 
-    private void markAsRaider(LivingEntity entity, UUID raidId, String type) {
-        PersistentDataContainer container = entity.getPersistentDataContainer();
-        container.set(raiderKey, PersistentDataType.BYTE, (byte) 1);
-        container.set(raidIdKey, PersistentDataType.STRING, raidId.toString());
-        container.set(raiderTypeKey, PersistentDataType.STRING, type);
+    private void markAsRaider(Entity entity, UUID raidId, String type) {
+        PersistentDataContainer pdc = entity.getPersistentDataContainer();
+        pdc.set(raiderKey, PersistentDataType.BYTE, (byte) 1);
+        pdc.set(raidIdKey, PersistentDataType.STRING, raidId.toString());
+        pdc.set(raiderTypeKey, PersistentDataType.STRING, type);
         
         entity.setMetadata(METADATA_RAIDER, new FixedMetadataValue(plugin, true));
         entity.setMetadata(METADATA_RAID_ID, new FixedMetadataValue(plugin, raidId.toString()));
@@ -150,60 +158,48 @@ public class RaiderEntityManager {
     }
 
     public boolean isRaider(Entity entity) {
-        if (entity == null) return false;
-        return entity.hasMetadata(METADATA_RAIDER) || entity.getPersistentDataContainer().has(raiderKey, PersistentDataType.BYTE);
+        return entity.getPersistentDataContainer().has(raiderKey, PersistentDataType.BYTE);
     }
 
     public boolean isRaiderZombie(Entity entity) {
         if (!isRaider(entity)) return false;
-        return entity.hasMetadata(METADATA_RAIDER_TYPE) && 
-               RAIDER_TYPE_ZOMBIE.equals(entity.getMetadata(METADATA_RAIDER_TYPE).get(0).asString());
+        
+        return entity.getPersistentDataContainer()
+                .getOrDefault(raiderTypeKey, PersistentDataType.STRING, "")
+                .equals(RAIDER_TYPE_ZOMBIE);
     }
 
     public boolean isRaiderSkeleton(Entity entity) {
         if (!isRaider(entity)) return false;
-        return entity.hasMetadata(METADATA_RAIDER_TYPE) && 
-               RAIDER_TYPE_SKELETON.equals(entity.getMetadata(METADATA_RAIDER_TYPE).get(0).asString());
+        
+        return entity.getPersistentDataContainer()
+                .getOrDefault(raiderTypeKey, PersistentDataType.STRING, "")
+                .equals(RAIDER_TYPE_SKELETON);
     }
 
     public UUID getRaidId(Entity entity) {
         if (!isRaider(entity)) return null;
         
-        if (entity.hasMetadata(METADATA_RAID_ID)) {
-            String raidIdStr = entity.getMetadata(METADATA_RAID_ID).get(0).asString();
-            return UUID.fromString(raidIdStr);
-        }
+        String raidIdStr = entity.getPersistentDataContainer()
+                .getOrDefault(raidIdKey, PersistentDataType.STRING, null);
+                
+        if (raidIdStr == null) return null;
         
-        PersistentDataContainer container = entity.getPersistentDataContainer();
-        if (container.has(raidIdKey, PersistentDataType.STRING)) {
-            String raidIdStr = container.get(raidIdKey, PersistentDataType.STRING);
+        try {
             return UUID.fromString(raidIdStr);
+        } catch (IllegalArgumentException e) {
+            return null;
         }
-        
-        return null;
     }
 
-    public void cleanupRaidMobs(UUID raidId) {
-        RaidManager raidManager = plugin.getRaidManager();
-        ActiveRaid raid = null;
-        
-        for (ActiveRaid activeRaid : raidManager.getActiveRaids()) {
-            if (activeRaid.getId().equals(raidId)) {
-                raid = activeRaid;
-                break;
-            }
-        }
-        
-        if (raid == null) return;
-        
-        List<UUID> raiderEntities = new ArrayList<>(raid.getRaiderEntities());
-        
-        for (UUID entityId : raiderEntities) {
+    public void removeRaidMobs(ActiveRaid raid) {
+        List<UUID> toRemove = new ArrayList<>(raid.getRaiderEntities());
+        for (UUID entityId : toRemove) {
             for (World world : plugin.getServer().getWorlds()) {
-                for (LivingEntity entity : world.getLivingEntities()) {
+                for (Entity entity : world.getEntities()) {
                     if (entity.getUniqueId().equals(entityId)) {
                         entity.remove();
-                        raid.removeRaiderEntity(entityId);
+                        break;
                     }
                 }
             }
@@ -218,19 +214,27 @@ public class RaiderEntityManager {
                 }
             }
         }
+        
+        aiManager.cleanup();
     }
-    
+
+    public void cleanupRaidMobs(UUID raidId) {
+        for (World world : plugin.getServer().getWorlds()) {
+            for (Entity entity : world.getEntities()) {
+                UUID entityRaidId = getRaidId(entity);
+                if (entityRaidId != null && entityRaidId.equals(raidId)) {
+                    entity.remove();
+                }
+            }
+        }
+    }
+
     private Location getRandomNearbyLocation(Location center, int radius) {
-        double angle = Math.random() * 2 * Math.PI;
-        double distance = Math.random() * radius;
-        double x = center.getX() + distance * Math.cos(angle);
-        double z = center.getZ() + distance * Math.sin(angle);
+        double x = center.getX() + (Math.random() * 2 - 1) * radius;
+        double z = center.getZ() + (Math.random() * 2 - 1) * radius;
+        World world = center.getWorld();
+        int y = world.getHighestBlockYAt((int) x, (int) z);
         
-        Location location = center.clone();
-        location.setX(x);
-        location.setZ(z);
-        location.setY(center.getWorld().getHighestBlockYAt((int) x, (int) z) + 1);
-        
-        return location;
+        return new Location(world, x, y + 1, z);
     }
 }

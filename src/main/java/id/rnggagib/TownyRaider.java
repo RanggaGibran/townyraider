@@ -14,6 +14,7 @@ import id.rnggagib.entity.RaiderEntityListener;
 import id.rnggagib.effects.VisualEffectsManager;
 import id.rnggagib.protection.ProtectionManager;
 import id.rnggagib.persistence.PersistenceManager;
+import id.rnggagib.economy.EconomyManager;
 
 public class TownyRaider extends JavaPlugin {
     private static final Logger LOGGER = Logger.getLogger("townyraider");
@@ -27,6 +28,7 @@ public class TownyRaider extends JavaPlugin {
     private VisualEffectsManager visualEffectsManager;
     private ProtectionManager protectionManager;
     private PersistenceManager persistenceManager;
+    private EconomyManager economyManager;
 
     @Override
     public void onEnable() {
@@ -43,6 +45,7 @@ public class TownyRaider extends JavaPlugin {
         
         if (getServer().getPluginManager().isPluginEnabled("Towny")) {
             townyHandler = new TownyHandler(this);
+            economyManager = new EconomyManager(this);
             protectionManager = new ProtectionManager(this);
             raidManager = new RaidManager(this);
             
@@ -77,6 +80,10 @@ public class TownyRaider extends JavaPlugin {
         
         if (raiderEntityManager != null) {
             raiderEntityManager.removeAllRaidMobs();
+        }
+        
+        if (economyManager != null) {
+            economyManager.cleanup();
         }
         
         if (messageManager != null) {
@@ -124,6 +131,10 @@ public class TownyRaider extends JavaPlugin {
     
     public PersistenceManager getPersistenceManager() {
         return persistenceManager;
+    }
+    
+    public EconomyManager getEconomyManager() {
+        return economyManager;
     }
     
     public void reloadPlugin() {

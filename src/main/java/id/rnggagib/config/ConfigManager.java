@@ -30,6 +30,17 @@ public class ConfigManager {
     private Set<Material> protectedMaterials = new HashSet<>();
     private Set<Material> defensiveBlocks = new HashSet<>();
 
+    private double baseItemValue;
+    private double raidBaseReward;
+    private double raidBasePenalty;
+    private double raidRewardMultiplier;
+    private double raidPenaltyMultiplier;
+    private double maxPenaltyPercentage;
+    private double defenderBonus;
+    private double compensationMultiplier;
+    private boolean defenderBonusEnabled;
+    private boolean defenderCompensationEnabled;
+
     public ConfigManager(TownyRaider plugin) {
         this.plugin = plugin;
         loadConfig();
@@ -56,6 +67,7 @@ public class ConfigManager {
         loadRaidTimes();
         loadProtectedMaterials();
         loadDefensiveBlocks();
+        loadEconomySettings();
     }
     
     public void saveConfig() {
@@ -138,6 +150,19 @@ public class ConfigManager {
                 plugin.getLogger().warning("Invalid material in defensive blocks: " + blockString);
             }
         }
+    }
+    
+    private void loadEconomySettings() {
+        baseItemValue = config.getDouble("economy.base-item-value", 50.0);
+        raidBaseReward = config.getDouble("economy.raid-base-reward", 500.0);
+        raidBasePenalty = config.getDouble("economy.raid-base-penalty", 300.0);
+        raidRewardMultiplier = config.getDouble("economy.raid-reward-multiplier", 1.0);
+        raidPenaltyMultiplier = config.getDouble("economy.raid-penalty-multiplier", 0.5);
+        maxPenaltyPercentage = config.getDouble("economy.max-penalty-percentage", 0.1);
+        defenderBonus = config.getDouble("economy.defender-bonus", 100.0);
+        compensationMultiplier = config.getDouble("economy.compensation-multiplier", 0.3);
+        defenderBonusEnabled = config.getBoolean("economy.defender-bonus-enabled", true);
+        defenderCompensationEnabled = config.getBoolean("economy.defender-compensation-enabled", true);
     }
     
     public boolean isDebugEnabled() {
@@ -266,5 +291,45 @@ public class ConfigManager {
 
     public boolean isRaidDefenseBonusEnabled() {
         return config.getBoolean("protection.enable-defense-bonus", true);
+    }
+
+    public double getBaseItemValue() {
+        return baseItemValue;
+    }
+
+    public double getRaidBaseReward() {
+        return raidBaseReward;
+    }
+
+    public double getRaidBasePenalty() {
+        return raidBasePenalty;
+    }
+
+    public double getRaidRewardMultiplier() {
+        return raidRewardMultiplier;
+    }
+
+    public double getRaidPenaltyMultiplier() {
+        return raidPenaltyMultiplier;
+    }
+
+    public double getMaxPenaltyPercentage() {
+        return maxPenaltyPercentage;
+    }
+
+    public double getDefenderBonus() {
+        return defenderBonus;
+    }
+
+    public double getCompensationMultiplier() {
+        return compensationMultiplier;
+    }
+
+    public boolean isDefenderBonusEnabled() {
+        return defenderBonusEnabled;
+    }
+
+    public boolean isDefenderCompensationEnabled() {
+        return defenderCompensationEnabled;
     }
 }

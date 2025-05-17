@@ -199,4 +199,29 @@ public class StealingManager {
     public void resetTheftCount(UUID entityId) {
         raiderThefts.remove(entityId);
     }
+
+    public void handleBlockStealing(Zombie zombie, Block block, ActiveRaid raid) {
+        if (!plugin.getRaiderEntityManager().isRaiderZombie(zombie)) return;
+        
+        Material type = block.getType();
+        if (!plugin.getConfigManager().getStealableBlocks().contains(type)) return;
+        
+        int currentThefts = raiderThefts.getOrDefault(zombie.getUniqueId(), 0);
+        int maxTheftsPerRaider = plugin.getConfigManager().getMobConfig("baby-zombie").getInt("max-thefts", 5);
+        
+        if (currentThefts >= maxTheftsPerRaider) {
+            return;
+        }
+        
+        raiderThefts.put(zombie.getUniqueId(), currentThefts + 1);
+        raid.incrementStolenItems(1);
+        
+        plugin.getVisualEffectsManager().showStealEffects(block.getLocation());
+        
+        block.setType(Material.AIR);
+        
+        plugin.getVisualEffectsManager().updateRaidProgress(raid);
+        
+        plugin.getLogger().info("Raider zombie stole " + type.name() + " during raid " + raid.getId());
+    }
 }

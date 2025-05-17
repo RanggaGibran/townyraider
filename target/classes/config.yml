@@ -127,6 +127,10 @@ messages:
   raid-protection-block-break: "<red>This block is protected during the raid!"
   raid-protection-block-place: "<red>You cannot place blocks in this area during a raid!"
   entering-raid-zone: "<dark_red>⚠ <red>You are entering an area under raid!"
+  economy-raid-reward: "<green>Your town has received <gold>{amount}</gold> for successfully defending against the raid!"
+  economy-raid-penalty: "<red>Your town has been fined <gold>{amount}</gold> due to lost resources during the raid."
+  economy-raid-compensation: "<yellow>You have received <gold>{amount}</gold> as compensation for losses during the raid."
+  economy-defender-bonus: "<green>You have received <gold>{amount}</gold> as a reward for defending your town!"
 
 # Protection settings
 protection:
@@ -167,3 +171,35 @@ protection:
     - "FENCE"
     - "OAK_FENCE"
     - "IRON_BARS"
+
+# Economy settings
+economy:
+  # Base value for each stolen item
+  base-item-value: 50.0
+  
+  # Base reward for successfully defending a town
+  raid-base-reward: 500.0
+  
+  # Base penalty for losing a raid
+  raid-base-penalty: 300.0
+  
+  # Multiplier for raid rewards (baseReward * multiplier)
+  raid-reward-multiplier: 1.0
+  
+  # Multiplier for stolen items when calculating penalties (basePenalty + (stolenValue * multiplier))
+  raid-penalty-multiplier: 0.5
+  
+  # Maximum percentage of a town's balance that can be taken as a penalty
+  max-penalty-percentage: 0.1
+  
+  # Bonus given to each player who actively defended the town
+  defender-bonus: 100.0
+  
+  # Whether to give bonus rewards to town defenders
+  defender-bonus-enabled: true
+  
+  # Whether to compensate players when items are stolen
+  defender-compensation-enabled: true
+  
+  # Multiplier for compensation (stolenValue * multiplier / playerCount)
+  compensation-multiplier: 0.3

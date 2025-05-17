@@ -3,9 +3,6 @@ package id.rnggagib.command;
 import id.rnggagib.TownyRaider;
 import org.bukkit.command.CommandSender;
 
-import java.util.HashMap;
-import java.util.List;
-
 public class ReloadCommand implements SubCommand {
     private final TownyRaider plugin;
 

@@ -193,14 +193,18 @@ public class RaidManager {
             
             raidHistory.add(history);
             
+            // Process economy for the raid
+            plugin.getEconomyManager().processRaidEconomy(raid, successful);
+            
             if (town != null) {
                 Map<String, String> placeholders = new HashMap<>();
                 placeholders.put("town", raid.getTownName());
                 placeholders.put("status", successful ? 
-                    plugin.getConfigManager().getMessage("raid-successful") : 
+                    plugin.getConfigManager().getMessage("raid-successful") :
                     plugin.getConfigManager().getMessage("raid-defended"));
-                placeholders.put("stolen", String.valueOf(raid.getStolenItems()));
+                placeholders.put("stolen_items", String.valueOf(raid.getStolenItems()));
                 
+                // Notify town members about raid end
                 townyHandler.notifyTownMembers(town, "raid-end", placeholders);
             }
         }
