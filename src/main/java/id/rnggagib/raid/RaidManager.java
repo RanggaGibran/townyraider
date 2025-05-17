@@ -6,6 +6,7 @@ import id.rnggagib.towny.TownyHandler;
 import id.rnggagib.persistence.PersistenceManager;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
+import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.scheduler.BukkitTask;
 
 import java.time.LocalDateTime;
@@ -26,6 +27,7 @@ public class RaidManager {
     private BukkitTask schedulerTask;
     private TownyHandler townyHandler;
     private PersistenceManager persistenceManager;
+    private DifficultyManager difficultyManager;
     
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm");
 
@@ -33,6 +35,7 @@ public class RaidManager {
         this.plugin = plugin;
         this.townyHandler = plugin.getTownyHandler();
         this.persistenceManager = plugin.getPersistenceManager();
+        this.difficultyManager = new DifficultyManager(plugin);
         loadPersistentData();
         startRaidScheduler();
     }
@@ -141,12 +144,48 @@ public class RaidManager {
             return;
         }
         
-        ActiveRaid raid = new ActiveRaid(UUID.randomUUID(), town.getName());
-        raid.setLocation(raidLocation);
-        activeRaids.put(raid.getId(), raid);
+        // Calculate difficulty score based on town properties
+        double difficultyScore = difficultyManager.calculateDifficultyScore(town);
         
-        // Spawn raid mobs at the location
-        plugin.getRaiderEntityManager().spawnRaidMobs(raid, raidLocation);
+        UUID raidId = UUID.randomUUID();
+        ActiveRaid raid = new ActiveRaid(raidId, town.getName());
+        raid.setLocation(raidLocation);
+        
+        // Store the difficulty score in raid metadata
+        raid.setMetadata("difficulty_score", difficultyScore);
+        
+        activeRaids.put(raidId, raid);
+        
+        // Override config values with difficulty-scaled values
+        ConfigurationSection zombieConfig = plugin.getConfigManager().getMobConfig("baby-zombie");
+        ConfigurationSection skeletonConfig = plugin.getConfigManager().getMobConfig("skeleton");
+        
+        // Apply difficulty scaling to zombies
+        int zombieCount = difficultyManager.getZombieCount(difficultyScore);
+        double zombieHealth = zombieConfig.getDouble("health", 15.0) * difficultyManager.getHealthMultiplier(difficultyScore);
+        double zombieSpeed = zombieConfig.getDouble("speed", 0.35) * difficultyManager.getSpeedMultiplier(difficultyScore);
+        double zombieDamage = 2.0 * difficultyManager.getDamageMultiplier(difficultyScore);
+        
+        // Store scaled values in raid metadata
+        raid.setMetadata("zombie_count", zombieCount);
+        raid.setMetadata("zombie_health", zombieHealth);
+        raid.setMetadata("zombie_speed", zombieSpeed);
+        raid.setMetadata("zombie_damage", zombieDamage);
+        
+        // Apply difficulty scaling to skeletons
+        int skeletonCount = difficultyManager.getSkeletonCount(difficultyScore);
+        double skeletonHealth = skeletonConfig.getDouble("health", 30.0) * difficultyManager.getHealthMultiplier(difficultyScore);
+        double skeletonSpeed = skeletonConfig.getDouble("speed", 0.25) * difficultyManager.getSpeedMultiplier(difficultyScore);
+        double skeletonDamage = 3.0 * difficultyManager.getDamageMultiplier(difficultyScore);
+        
+        // Store scaled values in raid metadata
+        raid.setMetadata("skeleton_count", skeletonCount);
+        raid.setMetadata("skeleton_health", skeletonHealth);
+        raid.setMetadata("skeleton_speed", skeletonSpeed);
+        raid.setMetadata("skeleton_damage", skeletonDamage);
+        
+        // Spawn raid mobs at the location with difficulty scaling
+        plugin.getRaiderEntityManager().spawnScaledRaidMobs(raid, raidLocation);
         
         // After spawning raid mobs, keep the chunks loaded
         plugin.getRaiderEntityManager().keepRaidChunksLoaded(raid);
@@ -160,11 +199,13 @@ public class RaidManager {
         
         Map<String, String> placeholders = new HashMap<>();
         placeholders.put("town", town.getName());
+        placeholders.put("difficulty", String.format("%.1f", difficultyScore));
         townyHandler.notifyTownMembers(town, "raid-start", placeholders);
         
         townyHandler.putTownOnCooldown(town);
         
-        int raidDuration = plugin.getConfigManager().getRaidDuration();
+        // Scale raid duration based on difficulty
+        int raidDuration = difficultyManager.getRaidDuration(difficultyScore);
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
             endRaid(raid.getId());
         }, 20L * 60 * raidDuration);
