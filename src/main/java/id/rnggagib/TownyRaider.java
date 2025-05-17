@@ -7,6 +7,7 @@ import id.rnggagib.config.ConfigManager;
 import id.rnggagib.message.MessageManager;
 import id.rnggagib.command.CommandManager;
 import id.rnggagib.raid.RaidManager;
+import id.rnggagib.towny.TownyHandler;
 
 public class TownyRaider extends JavaPlugin {
     private static final Logger LOGGER = Logger.getLogger("townyraider");
@@ -14,6 +15,7 @@ public class TownyRaider extends JavaPlugin {
     private MessageManager messageManager;
     private CommandManager commandManager;
     private RaidManager raidManager;
+    private TownyHandler townyHandler;
 
     @Override
     public void onEnable() {
@@ -21,7 +23,14 @@ public class TownyRaider extends JavaPlugin {
         configManager = new ConfigManager(this);
         messageManager = new MessageManager(this);
         commandManager = new CommandManager(this);
-        raidManager = new RaidManager(this);
+        
+        if (getServer().getPluginManager().isPluginEnabled("Towny")) {
+            townyHandler = new TownyHandler(this);
+            raidManager = new RaidManager(this);
+            LOGGER.info("Towny found and hooked successfully");
+        } else {
+            LOGGER.severe("Towny plugin not found or not enabled! TownyRaider functionality will be limited.");
+        }
         
         LOGGER.info("TownyRaider enabled successfully");
         
@@ -57,6 +66,10 @@ public class TownyRaider extends JavaPlugin {
     
     public RaidManager getRaidManager() {
         return raidManager;
+    }
+    
+    public TownyHandler getTownyHandler() {
+        return townyHandler;
     }
     
     public void reloadPlugin() {

@@ -1,5 +1,7 @@
 package id.rnggagib.raid;
 
+import org.bukkit.Location;
+
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -11,6 +13,7 @@ public class ActiveRaid {
     private final LocalDateTime startTime;
     private int stolenItems;
     private final List<UUID> raiderEntities;
+    private Location location;
 
     public ActiveRaid(UUID id, String townName) {
         this.id = id;
@@ -54,5 +57,13 @@ public class ActiveRaid {
 
     public boolean isRaiderEntity(UUID entityId) {
         return raiderEntities.contains(entityId);
+    }
+    
+    public Location getLocation() {
+        return location;
+    }
+    
+    public void setLocation(Location location) {
+        this.location = location;
     }
 }

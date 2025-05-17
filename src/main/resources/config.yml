@@ -102,3 +102,7 @@ messages:
   help-header: "<gold>----- TownyRaider Help (v{version}) -----</gold>"
   help-command: "<yellow>{command}</yellow> - <gray>{description}</gray>"
   help-footer: "<gold>-----------------------------</gold>"
+  status-header: "<yellow>Raid Status: <green>{enabled}</green> | Active Raids: <gold>{active_count}</gold></yellow>"
+  status-raid: "<gray>Town: <white>{town}</white> | Started: <white>{start_time}</white> | Items Stolen: <red>{stolen}</red></gray>"
+  status-no-raids: "<gray>No active raids at the moment.</gray>"
+  raids-toggled: "<yellow>Raid functionality has been {status}.</yellow>"
