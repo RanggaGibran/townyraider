@@ -82,6 +82,14 @@
             <artifactId>adventure-platform-bukkit</artifactId>
             <version>4.3.1</version>
         </dependency>
+        <dependency>
+            <groupId>org.spigotmc</groupId>
+            <artifactId>spigot</artifactId>
+            <version>1.19.4-R0.1-SNAPSHOT</version>
+            <scope>provided</scope>
+            <classifier>remapped-mojang</classifier>
+        </dependency>
+
     </dependencies>
 
     <build>

@@ -79,40 +79,39 @@ public class PathfindingManager {
         
         // Check if we need to recalculate the path
         if (shouldRecalculatePath(entity, target, cache)) {
-            // Get NMS entity for pathfinding
-            net.minecraft.world.entity.Entity nmsEntity = ((CraftEntity)entity).getHandle();
+            // Use available methods in Mob interface for pathfinding
+            boolean success = false;
             
-            if (!(nmsEntity instanceof PathfinderMob)) {
-                // Fallback to simple movement if not a PathfinderMob
-                return navigateToFallback(entity, target, speed);
+            try {
+                // First try: Use direct navigation method
+                success = entity.getNavigation().setDestination(target, speed);
+            } catch (Exception e) {
+                // If above method doesn't exist, try alternate approach
+                try {
+                    // Second try: Use simple pathfinding in Minecraft 1.19
+                    success = entity.getPathfinder().pathfind(target, speed);
+                } catch (Exception e2) {
+                    // Last resort: Fallback to our simple implementation
+                    return navigateToFallback(entity, target, speed);
+                }
             }
-            
-            PathfinderMob pathfinderMob = (PathfinderMob) nmsEntity;
-            PathNavigation navigation = pathfinderMob.getNavigation();
-            
-            // Convert target to NMS Vec3
-            net.minecraft.world.phys.Vec3 targetVec = new net.minecraft.world.phys.Vec3(
-                target.getX(), target.getY(), target.getZ());
-            
-            // Calculate path
-            boolean success = navigation.moveTo(targetVec.x, targetVec.y, targetVec.z, speed);
             
             // Update cache
             if (success) {
-                Path path = navigation.getPath();
-                if (path != null) {
-                    cache.target = target.clone();
-                    cache.lastCalculationTime = System.currentTimeMillis();
-                    cache.isNavigating = true;
-                    
-                    // Store previous location to detect if entity gets stuck
-                    cache.lastPosition = entity.getLocation();
-                    cache.stuckCounter = 0;
-                    
-                    // Schedule path monitoring
-                    monitorPath(entity, target, cache);
-                    return true;
-                }
+                cache.target = target.clone();
+                cache.lastCalculationTime = System.currentTimeMillis();
+                cache.isNavigating = true;
+                
+                // Store previous location to detect if entity gets stuck
+                cache.lastPosition = entity.getLocation();
+                cache.stuckCounter = 0;
+                
+                // Schedule path monitoring
+                monitorPath(entity, target, cache);
+                return true;
+            } else {
+                // If pathfinding failed, use fallback
+                return navigateToFallback(entity, target, speed);
             }
         }
         
