@@ -34,8 +34,13 @@ public class MessageManager {
     }
 
     public Component format(String message, Map<String, String> placeholders) {
-        TagResolver.Builder builder = TagResolver.builder();
+        // First replace traditional placeholders in format {key}
+        for (Map.Entry<String, String> entry : placeholders.entrySet()) {
+            message = message.replace("{" + entry.getKey() + "}", entry.getValue());
+        }
         
+        // Then build the TagResolver for MiniMessage formatting
+        TagResolver.Builder builder = TagResolver.builder();
         for (Map.Entry<String, String> entry : placeholders.entrySet()) {
             builder.resolver(Placeholder.parsed(entry.getKey(), entry.getValue()));
         }
@@ -47,8 +52,13 @@ public class MessageManager {
         String prefix = plugin.getConfigManager().getPrefix();
         String message = plugin.getConfigManager().getMessage(messageKey);
         
-        TagResolver.Builder builder = TagResolver.builder();
+        // First replace traditional placeholders in format {key}
+        for (Map.Entry<String, String> entry : placeholders.entrySet()) {
+            message = message.replace("{" + entry.getKey() + "}", entry.getValue());
+        }
         
+        // Then apply MiniMessage formatting
+        TagResolver.Builder builder = TagResolver.builder();
         for (Map.Entry<String, String> entry : placeholders.entrySet()) {
             builder.resolver(Placeholder.parsed(entry.getKey(), entry.getValue()));
         }
