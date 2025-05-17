@@ -1,0 +1,33 @@
+name: TownyRaider
+main: id.rnggagib.TownyRaider
+version: 1.0-SNAPSHOT
+api-version: 1.20
+description: Town raiding system with custom AI mobs
+authors: [rnggagib]
+
+depend: [Towny, Vault]
+
+commands:
+  townyraider:
+    description: Main command for TownyRaider plugin
+    usage: /townyraider <reload|status|toggle>
+    aliases: [traider, raid]
+    permission: townyraider.command
+
+permissions:
+  townyraider.admin:
+    description: Gives access to all TownyRaider admin commands
+    default: op
+    children:
+      townyraider.command: true
+      townyraider.reload: true
+      townyraider.toggle: true
+  townyraider.command:
+    description: Allows using basic TownyRaider commands
+    default: true
+  townyraider.reload:
+    description: Allows reloading the TownyRaider configuration
+    default: op
+  townyraider.toggle:
+    description: Allows toggling raid functionality on/off
+    default: op
