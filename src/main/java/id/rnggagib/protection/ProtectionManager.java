@@ -9,6 +9,7 @@ import id.rnggagib.raid.ActiveRaid;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
+import org.bukkit.block.BlockFace;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Monster;
 import org.bukkit.entity.Player;
@@ -81,6 +82,36 @@ public class ProtectionManager implements Listener {
     
     public boolean canEntityBypass(Entity entity) {
         return plugin.getRaiderEntityManager().isRaider(entity);
+    }
+    
+    /**
+     * Check if an entity is allowed to place blocks (for bridge building)
+     */
+    public boolean canEntityPlaceBlock(Entity entity, Block block) {
+        // Check if the entity is a raider
+        if (!canEntityBypass(entity)) {
+            return false;
+        }
+        
+        // Ensure the block is in a raid zone
+        if (!isLocationInRaidZone(block.getLocation())) {
+            return false;
+        }
+        
+        // Ensure bridging is enabled in config
+        if (!plugin.getConfigManager().isBridgeBuildingEnabled()) {
+            return false;
+        }
+        
+        // Prevent placing blocks on certain materials
+        Block blockBelow = block.getRelative(BlockFace.DOWN);
+        Material belowType = blockBelow.getType();
+        
+        // Only allow building on certain materials
+        return belowType == Material.WATER || 
+               belowType == Material.LAVA || 
+               belowType == Material.AIR ||
+               belowType.toString().contains("LEAVES");
     }
     
     public void setupProtectionForRaid(ActiveRaid raid) {

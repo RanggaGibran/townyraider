@@ -332,4 +332,33 @@ public class ConfigManager {
     public boolean isDefenderCompensationEnabled() {
         return defenderCompensationEnabled;
     }
+
+    /**
+     * Check if bridge building is enabled
+     */
+    public boolean isBridgeBuildingEnabled() {
+        return config.getBoolean("raider-abilities.bridge-building", false);
+    }
+
+    /**
+     * Check if block breaking by raiders is enabled
+     * @return true if raiders can break blocks, false otherwise
+     */
+    public boolean isBlockBreakingEnabled() {
+        return config.getBoolean("raider-abilities.block-breaking", false);
+    }
+
+    /**
+     * Check if a block type can be broken by raiders
+     */
+    public boolean isBreakableBlock(Material material) {
+        // First check if block breaking is enabled at all
+        if (!isBlockBreakingEnabled()) {
+            return false;
+        }
+        
+        // Get list of breakable blocks
+        List<String> breakable = config.getStringList("raider-abilities.breakable-blocks");
+        return breakable.contains(material.toString());
+    }
 }

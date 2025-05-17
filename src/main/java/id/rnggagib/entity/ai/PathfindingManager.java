@@ -2,13 +2,18 @@ package id.rnggagib.entity.ai;
 
 import id.rnggagib.TownyRaider;
 import id.rnggagib.raid.ActiveRaid;
+import id.rnggagib.entity.ai.pathfinding.AStarPathfinder;
+import id.rnggagib.entity.ai.waypoint.Waypoint;
+import id.rnggagib.entity.ai.waypoint.WaypointPath;
 
 import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Mob;
+import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.util.Vector;
 
@@ -18,12 +23,15 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.WeakHashMap;
 
 public class PathfindingManager {
     private final TownyRaider plugin;
     private final Map<Entity, PathCache> pathCache = new WeakHashMap<>();
     private final Set<Material> problematicBlocks;
+    private final AStarPathfinder pathfinder;
+    private final Map<UUID, WaypointPath> entityPaths = new HashMap<>();
     
     // Pathfinding constants
     private static final int PATH_RECALCULATION_TICKS = 40; // Recalculate path every 2 seconds
@@ -33,6 +41,7 @@ public class PathfindingManager {
     public PathfindingManager(TownyRaider plugin) {
         this.plugin = plugin;
         this.problematicBlocks = initProblematicBlocks();
+        this.pathfinder = new AStarPathfinder(plugin, problematicBlocks);
     }
     
     private Set<Material> initProblematicBlocks() {
@@ -70,30 +79,17 @@ public class PathfindingManager {
         
         // Get or create path cache for this entity
         PathCache cache = pathCache.computeIfAbsent(entity, e -> new PathCache());
+        UUID entityId = entity.getUniqueId();
         
         // Check if we need to recalculate the path
         if (shouldRecalculatePath(entity, target, cache)) {
-            // Use standard Bukkit API for pathfinding
-            boolean success = false;
-            
-            // Set target for mob (this works for most hostile mobs)
-            if (target.getWorld().equals(entity.getWorld())) {
-                // Clear any existing targeting first
-                entity.setTarget(null);
+            // Generate a path using A* algorithm
+            WaypointPath path = pathfinder.findPath(entity.getLocation(), target);
+            if (path != null) {
+                // Store the path for this entity
+                entityPaths.put(entityId, path);
                 
-                // Apply basic physics-based movement
-                Vector direction = target.clone().subtract(entity.getLocation()).toVector().normalize();
-                double distanceToTarget = entity.getLocation().distance(target);
-                
-                // Scale velocity based on distance and desired speed
-                double velocityScale = Math.min(speed * 0.5, distanceToTarget * 0.2);
-                entity.setVelocity(direction.multiply(velocityScale));
-                
-                success = true;
-            }
-            
-            // Update cache
-            if (success) {
+                // Update cache info
                 cache.target = target.clone();
                 cache.lastCalculationTime = System.currentTimeMillis();
                 cache.isNavigating = true;
@@ -102,9 +98,26 @@ public class PathfindingManager {
                 cache.lastPosition = entity.getLocation();
                 cache.stuckCounter = 0;
                 
-                // Schedule path monitoring
-                monitorPath(entity, target, cache);
+                // Start following the path
+                followPath(entity, path, speed);
                 return true;
+            } else {
+                // Fallback to basic movement if no path found
+                return navigateToFallback(entity, target, speed);
+            }
+        } else if (entityPaths.containsKey(entityId)) {
+            // Continue following existing path
+            WaypointPath path = entityPaths.get(entityId);
+            if (!path.isCompleted()) {
+                // Update progress on current path
+                path.updateProgress(entity.getLocation());
+                
+                // Move toward current waypoint
+                Waypoint currentWaypoint = path.getCurrentWaypoint();
+                if (currentWaypoint != null) {
+                    moveTowardWaypoint(entity, currentWaypoint, speed);
+                    return true;
+                }
             }
         }
         
@@ -208,7 +221,7 @@ public class PathfindingManager {
     }
     
     /**
-     * Check and handle obstacles around entity
+     * Check and handle obstacles around entity with advanced obstacle handling
      */
     private void checkAndHandleObstacles(Mob entity) {
         Location loc = entity.getLocation();
@@ -223,19 +236,292 @@ public class PathfindingManager {
                             loc.getBlockY() + y, 
                             loc.getBlockZ() + z);
                     
+                    // Handle problematic blocks
                     if (problematicBlocks.contains(block.getType())) {
-                        // For now, just log if debug is enabled
-                        if (plugin.getConfigManager().isDebugEnabled()) {
-                            plugin.getLogger().info("Detected problematic block: " + 
-                                block.getType() + " at " + block.getLocation());
-                        }
-                        
-                        // Future: Add code to handle specific obstacles
-                        // e.g., break cobwebs, create bridges over water, etc.
+                        handleObstacleByType(entity, block);
+                    }
+                    
+                    // Check for doors to interact with
+                    if (block.getType().toString().contains("DOOR") && 
+                        !block.getType().toString().contains("TRAP")) {
+                        handleDoor(entity, block);
                     }
                 }
             }
         }
+        
+        // Check for gaps in the path ahead
+        Location ahead = entity.getLocation().add(
+            entity.getLocation().getDirection().multiply(1.5));
+        Block blockAhead = ahead.getBlock();
+        Block blockBelow = ahead.clone().add(0, -1, 0).getBlock();
+        
+        if (!blockAhead.getType().isSolid() && !blockBelow.getType().isSolid()) {
+            handleGap(entity);
+        }
+    }
+    
+    /**
+     * Handle obstacles based on their type
+     */
+    private void handleObstacleByType(Mob entity, Block block) {
+        Material type = block.getType();
+        int intelligence = getEntityIntelligence(entity);
+        
+        switch (type) {
+            case COBWEB:
+                // Break cobwebs if intelligence is high enough
+                if (intelligence >= 2 && Math.random() < 0.7) {
+                    breakBlock(block);
+                }
+                break;
+                
+            case WATER:
+            case LAVA:
+                // Attempt to build a bridge over liquid
+                if (intelligence >= 3) {
+                    buildBridge(entity, block);
+                } else {
+                    // Less intelligent entities just try to jump over
+                    entity.setVelocity(entity.getVelocity().setY(0.4));
+                }
+                break;
+                
+            case SWEET_BERRY_BUSH:
+            case CACTUS:
+                // Break harmful plants if intelligence is high enough
+                if (intelligence >= 2) {
+                    breakBlock(block);
+                } else {
+                    // Move away from harmful blocks
+                    moveAwayFromBlock(entity, block);
+                }
+                break;
+                
+            case FIRE:
+            case SOUL_FIRE:
+            case CAMPFIRE:
+            case SOUL_CAMPFIRE:
+                // Extinguish fires if intelligence is high enough
+                if (intelligence >= 3) {
+                    extinguishFire(block);
+                } else {
+                    // Move away from fire
+                    moveAwayFromBlock(entity, block);
+                }
+                break;
+                
+            case HONEY_BLOCK:
+                // Jump to get unstuck from honey
+                entity.setVelocity(entity.getVelocity().setY(0.5));
+                break;
+        }
+    }
+    
+    /**
+     * Get entity intelligence level (defaults to 1 if not set)
+     */
+    private int getEntityIntelligence(Mob entity) {
+        NamespacedKey intelligenceKey = new NamespacedKey(plugin, "intelligence");
+        if (entity.getPersistentDataContainer().has(intelligenceKey, PersistentDataType.INTEGER)) {
+            return entity.getPersistentDataContainer().get(intelligenceKey, PersistentDataType.INTEGER);
+        }
+        return 1;
+    }
+    
+    /**
+     * Handle door interaction
+     */
+    private void handleDoor(Mob entity, Block doorBlock) {
+        // Only some doors should be interacted with based on intelligence
+        int intelligence = getEntityIntelligence(entity);
+        
+        if (intelligence < 2) {
+            return; // Not smart enough to use doors
+        }
+        
+        // Check if door is worth opening based on target direction
+        if (entityPaths.containsKey(entity.getUniqueId())) {
+            WaypointPath path = entityPaths.get(entity.getUniqueId());
+            Waypoint current = path.getCurrentWaypoint();
+            
+            if (current != null) {
+                Vector doorToTarget = current.getLocation().toVector()
+                    .subtract(doorBlock.getLocation().toVector());
+                Vector entityToTarget = current.getLocation().toVector()
+                    .subtract(entity.getLocation().toVector());
+                
+                // If door is between entity and target, open it
+                if (doorToTarget.dot(entityToTarget) > 0) {
+                    toggleDoor(doorBlock);
+                    
+                    // Create a short delay to allow door to open
+                    new BukkitRunnable() {
+                        @Override
+                        public void run() {
+                            if (entity.isValid() && !entity.isDead()) {
+                                // Give a small boost toward the door
+                                Vector direction = doorBlock.getLocation().toVector()
+                                    .subtract(entity.getLocation().toVector()).normalize();
+                                entity.setVelocity(direction.multiply(0.3));
+                            }
+                        }
+                    }.runTaskLater(plugin, 5L);
+                }
+            }
+        }
+    }
+    
+    /**
+     * Toggle a door's open/closed state
+     */
+    private void toggleDoor(Block doorBlock) {
+        plugin.getServer().getScheduler().runTask(plugin, () -> {
+            if (doorBlock.getBlockData() instanceof org.bukkit.block.data.Openable) {
+                org.bukkit.block.data.Openable openable = 
+                    (org.bukkit.block.data.Openable) doorBlock.getBlockData();
+                openable.setOpen(!openable.isOpen());
+                doorBlock.setBlockData(openable);
+                
+                // Play door sound
+                doorBlock.getWorld().playSound(
+                    doorBlock.getLocation(),
+                    openable.isOpen() ? org.bukkit.Sound.BLOCK_WOODEN_DOOR_OPEN : org.bukkit.Sound.BLOCK_WOODEN_DOOR_CLOSE,
+                    0.5f, 1.0f
+                );
+            }
+        });
+    }
+    
+    /**
+     * Handle gap in the path
+     */
+    private void handleGap(Mob entity) {
+        // Jump to cross small gaps
+        entity.setVelocity(entity.getVelocity().multiply(1.2).setY(0.4));
+    }
+    
+    /**
+     * Break a block if block breaking is enabled
+     */
+    private void breakBlock(Block block) {
+        if (!plugin.getConfigManager().isBlockBreakingEnabled()) {
+            return;
+        }
+        
+        if (!plugin.getConfigManager().isBreakableBlock(block.getType())) {
+            return;
+        }
+        
+        plugin.getServer().getScheduler().runTask(plugin, () -> {
+            // Create breaking effect
+            block.getWorld().playEffect(block.getLocation(), org.bukkit.Effect.STEP_SOUND, block.getType());
+            
+            // Break the block
+            block.setType(Material.AIR);
+        });
+    }
+    
+    /**
+     * Build a bridge over liquid
+     */
+    private void buildBridge(Mob entity, Block liquidBlock) {
+        if (!plugin.getConfigManager().isBridgeBuildingEnabled()) {
+            return;
+        }
+        
+        // Check if intelligence is high enough (already checked in caller but double-check)
+        int intelligence = getEntityIntelligence(entity);
+        if (intelligence < 3) return;
+        
+        // High intelligence mobs can build bridges over liquid
+        Material bridgeMaterial = getBridgeMaterial(entity);
+        
+        plugin.getServer().getScheduler().runTask(plugin, () -> {
+            if (liquidBlock.getType() == Material.WATER || liquidBlock.getType() == Material.LAVA) {
+                // Place a block on top of the liquid
+                Block blockAbove = liquidBlock.getWorld().getBlockAt(
+                    liquidBlock.getX(), 
+                    liquidBlock.getY() + 1, 
+                    liquidBlock.getZ()
+                );
+                
+                if (blockAbove.isEmpty()) {
+                    // Check if this is allowed by protection plugins
+                    if (plugin.getProtectionManager().canEntityPlaceBlock(entity, blockAbove)) {
+                        blockAbove.setType(bridgeMaterial);
+                        
+                        // Play sound and effect
+                        liquidBlock.getWorld().playSound(
+                            liquidBlock.getLocation(),
+                            org.bukkit.Sound.BLOCK_STONE_PLACE,
+                            0.5f, 1.0f
+                        );
+                    }
+                }
+            }
+        });
+    }
+    
+    /**
+     * Get an appropriate block for bridge building based on entity type
+     */
+    private Material getBridgeMaterial(Entity entity) {
+        // Use different materials based on entity type
+        if (entity instanceof org.bukkit.entity.Zombie) {
+            return Material.DIRT;
+        } else if (entity instanceof org.bukkit.entity.Skeleton) {
+            return Material.COBBLESTONE;
+        } else {
+            return Material.DIRT;
+        }
+    }
+    
+    /**
+     * Move entity away from a dangerous block
+     */
+    private void moveAwayFromBlock(Mob entity, Block block) {
+        // Calculate direction away from block
+        Vector awayDirection = entity.getLocation().toVector()
+            .subtract(block.getLocation().toVector())
+            .normalize();
+        
+        // Apply velocity to move away
+        entity.setVelocity(awayDirection.multiply(0.5).setY(0.2));
+    }
+    
+    /**
+     * Extinguish a fire block
+     */
+    private void extinguishFire(Block fireBlock) {
+        Material type = fireBlock.getType();
+        
+        plugin.getServer().getScheduler().runTask(plugin, () -> {
+            if (type == Material.FIRE || type == Material.SOUL_FIRE) {
+                fireBlock.setType(Material.AIR);
+                
+                // Play extinguish sound
+                fireBlock.getWorld().playSound(
+                    fireBlock.getLocation(),
+                    org.bukkit.Sound.BLOCK_FIRE_EXTINGUISH,
+                    0.5f, 1.0f
+                );
+            } else if (type == Material.CAMPFIRE || type == Material.SOUL_CAMPFIRE) {
+                if (fireBlock.getBlockData() instanceof org.bukkit.block.data.Lightable) {
+                    org.bukkit.block.data.Lightable campfire = 
+                        (org.bukkit.block.data.Lightable) fireBlock.getBlockData();
+                    campfire.setLit(false);
+                    fireBlock.setBlockData(campfire);
+                    
+                    // Play extinguish sound
+                    fireBlock.getWorld().playSound(
+                        fireBlock.getLocation(),
+                        org.bukkit.Sound.BLOCK_FIRE_EXTINGUISH,
+                        0.5f, 1.0f
+                    );
+                }
+            }
+        });
     }
     
     /**
@@ -327,6 +613,7 @@ public class PathfindingManager {
      */
     public void removeEntity(Entity entity) {
         pathCache.remove(entity);
+        entityPaths.remove(entity.getUniqueId());
     }
     
     /**
@@ -334,6 +621,7 @@ public class PathfindingManager {
      */
     public void cleanup() {
         pathCache.clear();
+        entityPaths.clear();
     }
     
     /**
@@ -349,6 +637,106 @@ public class PathfindingManager {
         PathCache() {
             this.isNavigating = false;
             this.stuckCounter = 0;
+        }
+    }
+    
+    /**
+     * Add new method to follow a path
+     */
+    private void followPath(Mob entity, WaypointPath path, double speed) {
+        UUID entityId = entity.getUniqueId();
+        
+        new BukkitRunnable() {
+            @Override
+            public void run() {
+                // Check if entity is still valid
+                if (!entity.isValid() || entity.isDead() || path.isCompleted()) {
+                    this.cancel();
+                    entityPaths.remove(entityId);
+                    return;
+                }
+                
+                // Update path progress based on current location
+                boolean waypointReached = path.updateProgress(entity.getLocation());
+                
+                // Get current waypoint
+                Waypoint currentWaypoint = path.getCurrentWaypoint();
+                if (currentWaypoint == null) {
+                    // End of path reached
+                    this.cancel();
+                    entityPaths.remove(entityId);
+                    return;
+                }
+                
+                // If we just reached a waypoint, perform special handling based on waypoint type
+                if (waypointReached) {
+                    handleWaypointType(entity, currentWaypoint);
+                }
+                
+                // Move toward the current waypoint
+                moveTowardWaypoint(entity, currentWaypoint, speed);
+            }
+        }.runTaskTimer(plugin, 5L, 5L);
+    }
+    
+    /**
+     * Add method to move toward a specific waypoint
+     */
+    private void moveTowardWaypoint(Mob entity, Waypoint waypoint, double speed) {
+        Location waypointLoc = waypoint.getLocation();
+        
+        // Calculate movement vector
+        Vector direction = waypointLoc.clone().subtract(entity.getLocation()).toVector().normalize();
+        
+        // Adjust speed based on waypoint type
+        double adjustedSpeed = speed;
+        if (waypoint.getType() == Waypoint.WaypointType.CAREFUL) {
+            adjustedSpeed *= 0.5; // Slower for careful movement
+        }
+        
+        // Apply velocity with appropriate magnitude
+        double distanceToWaypoint = entity.getLocation().distance(waypointLoc);
+        double velocityMagnitude = Math.min(adjustedSpeed * 0.5, distanceToWaypoint * 0.2);
+        entity.setVelocity(direction.multiply(velocityMagnitude));
+        
+        // Special handling for jump waypoints
+        if (waypoint.getType() == Waypoint.WaypointType.JUMP && 
+            entity.getLocation().distance(waypointLoc) < 2.0) {
+            entity.setVelocity(entity.getVelocity().setY(0.4));
+        }
+    }
+    
+    /**
+     * Add method to handle special waypoint types
+     */
+    private void handleWaypointType(Mob entity, Waypoint waypoint) {
+        switch (waypoint.getType()) {
+            case DOOR:
+                // Handle door interaction
+                Block block = waypoint.getLocation().getBlock();
+                if (block.getType().toString().contains("DOOR")) {
+                    // Toggle door state - in a real implementation you would check if the door is open/closed
+                    // Bukkit API for doors can be complex, so I'm simplifying here
+                    plugin.getServer().getScheduler().runTask(plugin, () -> {
+                        // Would use block.getState() and change door state here
+                    });
+                }
+                break;
+                
+            case BREAK_BLOCK:
+                // Handle block breaking (for advanced raiders)
+                if (plugin.getConfigManager().isBlockBreakingEnabled()) {
+                    Block block2 = waypoint.getLocation().getBlock();
+                    if (plugin.getConfigManager().isBreakableBlock(block2.getType())) {
+                        plugin.getServer().getScheduler().runTask(plugin, () -> {
+                            // Would trigger block breaking here
+                        });
+                    }
+                }
+                break;
+                
+            default:
+                break;
         }
     }
 }
