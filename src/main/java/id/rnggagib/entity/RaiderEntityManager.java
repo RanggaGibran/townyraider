@@ -52,7 +52,7 @@ public class RaiderEntityManager {
         this.raiderKey = new NamespacedKey(plugin, "raider");
         this.raidIdKey = new NamespacedKey(plugin, "raid_id");
         this.raiderTypeKey = new NamespacedKey(plugin, "raider_type");
-        this.aiManager = new SimpleAiManager(plugin);
+        this.aiManager = new SimpleAiManager(plugin); // To handle AI behavior
     }
 
     public void spawnRaidMobs(ActiveRaid raid, Location location) {

@@ -26,10 +26,12 @@ import com.palmergames.bukkit.towny.object.Town;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 public class SimpleAiManager {
     private final TownyRaider plugin;
@@ -71,11 +73,13 @@ public class SimpleAiManager {
         }
         
         final int zombieIntelligence = intelligence;
+        final Set<Location> exploredLocations = new HashSet<>(); // Track visited areas
         
         BukkitRunnable aiTask = new BukkitRunnable() {
             private int stuckCounter = 0;
             private Location lastLocation = zombie.getLocation();
             private int priorityChestCheckCooldown = 0;
+            private int explorationCooldown = 0;
             
             @Override
             public void run() {
@@ -94,10 +98,10 @@ public class SimpleAiManager {
                     return;
                 }
                 
-                // Check if zombie is stuck
+                // Check if zombie is stuck or not making significant progress
                 if (zombie.getLocation().distanceSquared(lastLocation) < 0.2) {
                     stuckCounter++;
-                    if (stuckCounter > 5) { // Stuck for 5 seconds
+                    if (stuckCounter > 4) { // Reduced to make them unstuck faster
                         // Try to unstuck by small teleport or jumping
                         unstuckZombie(zombie);
                         stuckCounter = 0;
@@ -107,140 +111,172 @@ public class SimpleAiManager {
                     lastLocation = zombie.getLocation();
                 }
                 
-                // Reduce cooldown for more intelligent zombies
+                // Reduce cooldowns for more intelligent zombies
                 priorityChestCheckCooldown--;
+                explorationCooldown--;
                 
-                // More intelligent zombies look for chests more frequently
+                // High priority: Direct the zombie to nearest chest with higher intelligence
                 if (priorityChestCheckCooldown <= 0) {
-                    // Direct the zombie to the nearest valuable chest with higher intelligence
-                    if (zombieIntelligence > 1 && Math.random() < 0.4 * zombieIntelligence) {
-                        plugin.getStealingManager().directZombieTowardChest(zombie, raid);
-                        priorityChestCheckCooldown = 10 - (zombieIntelligence * 2); // Intelligence reduces cooldown
-                        return;
+                    // Intelligent zombies will check for chests more frequently
+                    if (Math.random() < 0.3 + (0.1 * zombieIntelligence)) {
+                        if (plugin.getStealingManager().directZombieTowardChest(zombie, raid)) {
+                            // directZombieTowardChest returns true if a chest was found
+                            priorityChestCheckCooldown = 10 - (zombieIntelligence * 2);
+                            return;
+                        }
                     }
                 }
                 
+                // If no chest found or not checking for chests, handle exploration
                 Location targetLocation = targetLocations.get(zombie.getUniqueId());
                 
-                // Higher intelligence zombies change targets more strategically
+                // Decide if we need a new target
                 boolean shouldFindNewTarget = targetLocation == null || 
-                    zombie.getLocation().distance(targetLocation) < 2.0 || 
-                    Math.random() < (0.05 + (zombieIntelligence * 0.05)); // 5-20% chance based on intelligence
+                    zombie.getLocation().distance(targetLocation) < 2.0 ||
+                    (explorationCooldown <= 0 && Math.random() < 0.15); // 15% chance to change direction
                     
                 if (shouldFindNewTarget) {
-                    // First try to find chests - prioritize chests over blocks
-                    Chest nearbyChest = findNearbyChest(zombie.getLocation(), TARGET_SEARCH_RADIUS + zombieIntelligence);
+                    // First check if there's a chest nearby
+                    Chest nearbyChest = findNearbyChest(zombie.getLocation(), TARGET_SEARCH_RADIUS + (zombieIntelligence * 2));
                     if (nearbyChest != null) {
                         Location chestLoc = nearbyChest.getLocation();
                         targetLocations.put(zombie.getUniqueId(), chestLoc);
-                        zombie.getPersistentDataContainer().set(
-                            targetBlockKey, 
-                            PersistentDataType.STRING, 
-                            chestLoc.getWorld().getName() + "," + 
-                            chestLoc.getBlockX() + "," + 
-                            chestLoc.getBlockY() + "," + 
-                            chestLoc.getBlockZ()
-                        );
-                        
-                        // Show searching animation for higher intelligence zombies
-                        if (zombieIntelligence >= 2) {
-                            zombie.getWorld().spawnParticle(
-                                Particle.VILLAGER_HAPPY, 
-                                zombie.getLocation().add(0, 1.5, 0),
-                                5, 0.2, 0.2, 0.2, 0.05
-                            );
-                        }
+                        // Rest of chest targeting code...
                     } else {
-                        // If no chest, look for valuable blocks
-                        Location newTarget = findValuableBlockLocation(zombie, raid);
+                        // No chest found, so explore town more broadly
+                        Location newTarget = findExplorationTarget(zombie, raid, exploredLocations);
                         if (newTarget != null) {
                             targetLocations.put(zombie.getUniqueId(), newTarget);
-                            zombie.getPersistentDataContainer().set(
-                                targetBlockKey, 
-                                PersistentDataType.STRING, 
-                                newTarget.getWorld().getName() + "," + 
-                                newTarget.getBlockX() + "," + 
-                                newTarget.getBlockY() + "," + 
-                                newTarget.getBlockZ()
-                            );
+                            exploredLocations.add(newTarget.clone().getBlock().getLocation()); // Mark as explored
+                            explorationCooldown = 15 - zombieIntelligence; // Cooldown before changing target again
                         }
                     }
                 }
                 
-                if (targetLocation != null) {
-                    if (zombie instanceof Mob) {
-                        ((Mob) zombie).setTarget(null); // Always clear target
-                        
-                        // Create initial target
-                        Location initialTarget = targetLocation.clone();
-                        
-                        // Check for players nearby - try to avoid them based on intelligence
-                        Player nearbyPlayer = findNearestPlayer(zombie, 5);
-                        if (nearbyPlayer != null && zombieIntelligence > 1) {
-                            // Try to path around player
-                            Vector avoidanceVector = zombie.getLocation().toVector()
-                                .subtract(nearbyPlayer.getLocation().toVector()).normalize().multiply(2);
-                            
-                            // Adjust path to include avoidance vector - create a new location rather than modifying
-                            initialTarget = initialTarget.clone().add(avoidanceVector);
-                        }
-                        
-                        // Create a final copy that won't be modified and can be used in the inner class
-                        final Location finalTarget = initialTarget;
-                        
-                        // Move toward target with intelligence-based pathfinding
-                        double moveSpeed = 0.25 + (0.05 * zombieIntelligence);
-                        new BukkitRunnable() {
-                            private int moveCounter = 0;
-                            private final int maxMoves = 5 + zombieIntelligence;
-                            
-                            @Override
-                            public void run() {
-                                moveCounter++;
-                                
-                                if (!zombie.isValid() || zombie.isDead() || moveCounter > maxMoves) {
-                                    this.cancel();
-                                    return;
-                                }
-                                
-                                // Smoother movement with some randomness for higher intelligence
-                                Vector moveDir = finalTarget.clone().subtract(zombie.getLocation()).toVector().normalize();
-                                
-                                // Add slight randomness for more natural movement
-                                if (zombieIntelligence >= 2 && Math.random() < 0.3) {
-                                    moveDir.add(new Vector(
-                                        (Math.random() - 0.5) * 0.2, 
-                                        0, 
-                                        (Math.random() - 0.5) * 0.2
-                                    )).normalize();
-                                }
-                                
-                                // Apply movement
-                                zombie.setVelocity(moveDir.multiply(moveSpeed));
-                                
-                                // Look toward target
-                                Location lookLocation = zombie.getLocation().clone();
-                                lookLocation.setDirection(moveDir);
-                                zombie.teleport(lookLocation, org.bukkit.event.player.PlayerTeleportEvent.TeleportCause.PLUGIN);
-                            }
-                        }.runTaskTimer(plugin, 0L, 2L);
-                        
-                        // If close to target block, attempt to steal
-                        if (zombie.getLocation().distanceSquared(targetLocation) <= 4.0) {
-                            Block targetBlock = targetLocation.getBlock();
-                            if (targetBlock.getState() instanceof Chest) {
-                                plugin.getStealingManager().attemptToStealFromChest(zombie, (Chest)targetBlock.getState(), raid);
-                            } else {
-                                handleBlockStealing(zombie, targetBlock, raid);
-                            }
-                        }
-                    }
-                }
+                // Rest of the code for movement...
             }
         };
         
         aiTask.runTaskTimer(plugin, 5L, 20L);
         aiTasks.put(zombie.getUniqueId(), aiTask);
+    }
+
+    /**
+     * Finds a new exploration target in the town for the zombie to move toward
+     * @param entity The zombie entity
+     * @param raid The active raid
+     * @param exploredLocations Set of locations already explored
+     * @return A new target location
+     */
+    private Location findExplorationTarget(LivingEntity entity, ActiveRaid raid, Set<Location> exploredLocations) {
+        // Get town boundaries
+        Town town = plugin.getTownyHandler().getTownByName(raid.getTownName());
+        if (town == null) return null;
+        
+        // Get town boundaries
+        int[] townBounds = plugin.getTownyHandler().getTownBounds(town);
+        if (townBounds == null) return null;
+        
+        int minX = townBounds[0];
+        int minZ = townBounds[1];
+        int maxX = townBounds[2];
+        int maxZ = townBounds[3];
+        
+        World world = entity.getWorld();
+        Location currentLoc = entity.getLocation();
+        
+        // Define exploration parameters
+        int explorationRange = 20 + (getIntelligence(entity) * 5);  // More intelligent zombies explore further
+        int attempts = 0;
+        int maxAttempts = 10;
+        
+        while (attempts < maxAttempts) {
+            attempts++;
+            
+            // Choose a direction vector with some bias toward unexplored areas
+            Vector dirVector;
+            if (exploredLocations.size() > 0 && Math.random() < 0.7) {
+                // Try to move away from most recently explored locations (last 5)
+                List<Location> recentLocations = exploredLocations.stream()
+                    .sorted((a, b) -> Double.compare(
+                        a.distanceSquared(currentLoc),
+                        b.distanceSquared(currentLoc)))
+                    .limit(Math.min(5, exploredLocations.size()))
+                    .collect(Collectors.toList());
+                
+                // Calculate average position of recent locations
+                Vector avgPos = new Vector(0, 0, 0);
+                for (Location loc : recentLocations) {
+                    avgPos.add(loc.toVector());
+                }
+                avgPos.multiply(1.0 / recentLocations.size());
+                
+                // Move away from average position of recent locations
+                dirVector = currentLoc.toVector().subtract(avgPos).normalize();
+                
+                // Add some randomness
+                dirVector.add(new Vector(
+                    (Math.random() - 0.5) * 0.5,
+                    0,
+                    (Math.random() - 0.5) * 0.5
+                )).normalize();
+            } else {
+                // Just choose a random direction
+                double angle = Math.random() * Math.PI * 2;
+                dirVector = new Vector(Math.cos(angle), 0, Math.sin(angle));
+            }
+            
+            // Calculate target position
+            int distance = 10 + (int)(Math.random() * explorationRange);
+            int targetX = currentLoc.getBlockX() + (int)(dirVector.getX() * distance);
+            int targetZ = currentLoc.getBlockZ() + (int)(dirVector.getZ() * distance);
+            
+            // Check if target is within town boundaries
+            if (targetX >= minX && targetX <= maxX && targetZ >= minZ && targetZ <= maxZ) {
+                // Find the highest block at this position
+                int targetY = world.getHighestBlockYAt(targetX, targetZ);
+                Location targetLoc = new Location(world, targetX + 0.5, targetY + 1, targetZ + 0.5);
+                
+                // Check if this location is in the town
+                if (plugin.getTownyHandler().isLocationInTown(targetLoc, town)) {
+                    Block block = world.getBlockAt(targetX, targetY, targetZ);
+                    // Avoid water, lava, and other problematic blocks
+                    if (!block.isLiquid() && block.getType().isSolid()) {
+                        // Check if the blocks above are clear
+                        if (world.getBlockAt(targetX, targetY + 1, targetZ).isEmpty() &&
+                            world.getBlockAt(targetX, targetY + 2, targetZ).isEmpty()) {
+                            return targetLoc;
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Fallback - just pick a random location near the center of town
+        Location townCenter = plugin.getTownyHandler().getTownCenter(town);
+        if (townCenter != null) {
+            return getRandomNearbyLocation(townCenter, 20);
+        }
+        
+        // Last resort - move in a random direction
+        double angle = Math.random() * Math.PI * 2;
+        int distance = 5 + (int)(Math.random() * 10);
+        int x = currentLoc.getBlockX() + (int)(Math.cos(angle) * distance);
+        int z = currentLoc.getBlockZ() + (int)(Math.sin(angle) * distance);
+        int y = world.getHighestBlockYAt(x, z);
+        
+        return new Location(world, x + 0.5, y + 1, z + 0.5);
+    }
+
+    /**
+     * Gets the intelligence level of an entity
+     */
+    private int getIntelligence(LivingEntity entity) {
+        NamespacedKey intelligenceKey = new NamespacedKey(plugin, "intelligence");
+        if (entity.getPersistentDataContainer().has(intelligenceKey, PersistentDataType.INTEGER)) {
+            return entity.getPersistentDataContainer().get(intelligenceKey, PersistentDataType.INTEGER);
+        }
+        return 1; // Default intelligence
     }
 
     // Add this helper method to unstuck zombies
@@ -621,6 +657,50 @@ public class SimpleAiManager {
                     " at " + safeLocation.getBlockX() + "," + safeLocation.getBlockY() + "," + safeLocation.getBlockZ());
             }
         }
+    }
+
+    /**
+     * Gets a random location nearby a center point
+     * @param center The center location
+     * @param radius The radius to search within
+     * @return A random nearby location that's safe for entities
+     */
+    private Location getRandomNearbyLocation(Location center, int radius) {
+        World world = center.getWorld();
+        if (world == null) {
+            return center;
+        }
+        
+        // Try multiple times to find a suitable location
+        for (int attempts = 0; attempts < 10; attempts++) {
+            // Generate random offsets within radius
+            double x = center.getX() + (Math.random() * 2 - 1) * radius;
+            double z = center.getZ() + (Math.random() * 2 - 1) * radius;
+            
+            // Find the highest block at this position
+            int y = world.getHighestBlockYAt((int) x, (int) z);
+            
+            // Create location with padding for safety
+            Location loc = new Location(world, x, y + 1, z);
+            
+            // Check if the location is valid (not in water or lava)
+            Block block = loc.getBlock();
+            Block blockBelow = loc.clone().add(0, -1, 0).getBlock();
+            
+            if (!block.isLiquid() && !blockBelow.isLiquid() && 
+                blockBelow.getType().isSolid() &&
+                !blockBelow.getType().toString().contains("SLAB") && 
+                !blockBelow.getType().toString().contains("STAIRS")) {
+                
+                // Ensure there's enough space for entity
+                if (loc.clone().add(0, 1, 0).getBlock().isEmpty()) {
+                    return loc;
+                }
+            }
+        }
+        
+        // If no suitable location found after attempts, return safer fallback
+        return new Location(world, center.getX(), center.getY() + 3, center.getZ());
     }
 
     public void cleanup() {

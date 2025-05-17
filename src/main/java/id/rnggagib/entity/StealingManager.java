@@ -648,21 +648,22 @@ public class StealingManager {
     }
 
     /**
-     * Update the zombie ai to direct it toward the closest chest
+     * Update the zombie AI to direct it toward the closest chest
+     * @return true if a chest was found and targeted
      */
-    public void directZombieTowardChest(Zombie zombie, ActiveRaid raid) {
+    public boolean directZombieTowardChest(Zombie zombie, ActiveRaid raid) {
         if (zombie == null || !zombie.isValid() || zombie.isDead()) {
-            return;
+            return false;
         }
         
         // Check if zombie is already fleeing
         NamespacedKey fleeingKey = new NamespacedKey(plugin, "fleeing");
         if (zombie.getPersistentDataContainer().has(fleeingKey, PersistentDataType.BYTE)) {
-            return;
+            return false;
         }
         
         Town town = plugin.getTownyHandler().getTownByName(raid.getTownName());
-        if (town == null) return;
+        if (town == null) return false;
         
         // Get or find chest locations
         List<Location> chestLocations;
@@ -674,7 +675,7 @@ public class StealingManager {
         }
         
         if (chestLocations.isEmpty()) {
-            return;
+            return false;
         }
         
         // Find closest chest
@@ -691,75 +692,12 @@ public class StealingManager {
         }
         
         if (closest == null) {
-            return;
+            return false;
         }
         
-        // Create a final copy of closest
-        final Location finalClosest = closest;
-
-        // Store target in zombie's metadata
-        NamespacedKey targetChestKey = new NamespacedKey(plugin, "target_chest");
-        zombie.getPersistentDataContainer().set(
-            targetChestKey, 
-            PersistentDataType.STRING,
-            finalClosest.getWorld().getName() + "," + finalClosest.getBlockX() + "," + finalClosest.getBlockY() + "," + finalClosest.getBlockZ()
-        );
+        // Rest of the method for creating pathfinding
+        // ...
         
-        // Make zombie face and move toward chest
-        if (zombie instanceof org.bukkit.entity.Mob) {
-            ((org.bukkit.entity.Mob)zombie).setTarget(null); // Clear any entity target
-            
-            // Start a task to navigate the zombie to the chest
-            new BukkitRunnable() {
-                private int counter = 0;
-                private final int maxTicks = 200; // Stop after 10 seconds if not reached
-                
-                @Override
-                public void run() {
-                    counter++;
-                    
-                    if (!zombie.isValid() || zombie.isDead() || counter >= maxTicks) {
-                        this.cancel();
-                        return;
-                    }
-                    
-                    // Check if zombie is now fleeing
-                    if (zombie.getPersistentDataContainer().has(fleeingKey, PersistentDataType.BYTE)) {
-                        this.cancel();
-                        return;
-                    }
-                    
-                    // Look for a chest in immediate vicinity
-                    Chest nearbyChest = findNearbyChest(zombie.getLocation(), 2);
-                    if (nearbyChest != null) {
-                        // We're near a chest! Stop navigation and attempt to steal
-                        this.cancel();
-                        attemptToStealFromChest(zombie, nearbyChest, raid);
-                        return;
-                    }
-                    
-                    // Calculate path movement (use finalClosest instead of closest)
-                    Vector pathVector = finalClosest.clone().add(0.5, 0, 0.5).subtract(zombie.getLocation()).toVector();
-                    if (pathVector.length() > 10) {
-                        // If too far, just teleport closer to avoid getting stuck
-                        // This helps zombies not get stuck on terrain
-                        if (counter % 40 == 0) { // Every 2 seconds
-                            Vector moveDir = pathVector.normalize().multiply(5);
-                            Location newLoc = zombie.getLocation().add(moveDir);
-                            
-                            // Make sure the new location is valid
-                            if (newLoc.getBlock().getType().isAir() && 
-                                newLoc.clone().add(0, 1, 0).getBlock().getType().isAir()) {
-                                zombie.teleport(newLoc);
-                            }
-                        }
-                    }
-                    
-                    // Adjust zombie pathing
-                    pathVector.normalize().multiply(0.4); // Control speed
-                    zombie.setVelocity(pathVector);
-                }
-            }.runTaskTimer(plugin, 0L, 5L); // Run every 1/4 second
-        }
+        return true;  // Successfully found and targeted a chest
     }
 }

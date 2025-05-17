@@ -358,4 +358,72 @@ public class TownyHandler {
             return getTownSpawnLocation(town);
         }
     }
+
+    /**
+     * Gets the town's boundary coordinates
+     * @param town The town to get boundaries for
+     * @return An array with [minX, minZ, maxX, maxZ] or null if unable to determine
+     */
+    public int[] getTownBounds(Town town) {
+        if (town == null || town.getTownBlocks().isEmpty()) {
+            return null;
+        }
+        
+        int minX = Integer.MAX_VALUE;
+        int minZ = Integer.MAX_VALUE;
+        int maxX = Integer.MIN_VALUE;
+        int maxZ = Integer.MIN_VALUE;
+        
+        // Calculate town boundaries from town blocks
+        for (TownBlock townBlock : town.getTownBlocks()) {
+            int x = townBlock.getX() * 16; // Convert to block coordinates
+            int z = townBlock.getZ() * 16;
+            
+            if (x < minX) minX = x;
+            if (z < minZ) minZ = z;
+            if (x + 16 > maxX) maxX = x + 16; // Add 16 for the full block width
+            if (z + 16 > maxZ) maxZ = z + 16;
+        }
+        
+        return new int[] { minX, minZ, maxX, maxZ };
+    }
+
+    /**
+     * Gets the center location of a town
+     * @param town The town to get center for
+     * @return The center location of the town or null if it couldn't be determined
+     */
+    public Location getTownCenter(Town town) {
+        if (town == null) {
+            return null;
+        }
+        
+        // First try to use town spawn as center if available
+        try {
+            Location spawn = town.getSpawn();
+            if (spawn != null) {
+                return spawn;
+            }
+        } catch (Exception ignored) {
+            // Ignore any exceptions here and fall back to calculating center
+        }
+        
+        // Calculate geographic center if no spawn available
+        int[] bounds = getTownBounds(town);
+        if (bounds == null) {
+            return null;
+        }
+        
+        int centerX = (bounds[0] + bounds[2]) / 2;
+        int centerZ = (bounds[1] + bounds[3]) / 2;
+        
+        World world = Bukkit.getWorld(town.getWorld().getName());
+        if (world == null) {
+            return null;
+        }
+        
+        // Find a safe Y coordinate by getting highest block
+        int centerY = world.getHighestBlockYAt(centerX, centerZ);
+        return new Location(world, centerX + 0.5, centerY + 1, centerZ + 0.5);
+    }
 }
