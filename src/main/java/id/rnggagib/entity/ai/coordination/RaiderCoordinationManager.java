@@ -48,6 +48,7 @@ public class RaiderCoordinationManager {
     private static final double FORMATION_SPACING = 2.5;
     private static final int COORDINATION_UPDATE_TICKS = 20;
     private static final int MAX_SQUAD_SIZE = 5;
+    private static final double DEFAULT_MOVEMENT_SPEED = 1.0;
     
     public RaiderCoordinationManager(TownyRaider plugin, PathfindingManager pathfindingManager, 
                                     StrategicRetreatManager retreatManager) {
@@ -426,65 +427,32 @@ public class RaiderCoordinationManager {
     }
     
     /**
-     * Share a point of interest with squad members
+     * Share point of interest with entity and other squad members
      */
     public void sharePointOfInterest(LivingEntity entity, Location location, PointOfInterestType type) {
-        UUID squadId = getEntitySquadId(entity);
-        if (squadId == null) return;
+        sharePointOfInterest(entity, location, type, DEFAULT_MOVEMENT_SPEED);
+    }
+
+    /**
+     * Share point of interest with entity and other squad members with custom speed
+     */
+    public void sharePointOfInterest(LivingEntity entity, Location location, PointOfInterestType type, double speed) {
+        UUID entityId = entity.getUniqueId();
+        RaidSquad squad = getSquadByMember(entityId);
         
-        RaidSquad squad = activeSquads.get(squadId);
-        if (squad == null) return;
-        
-        // Store in shared knowledge
-        if (!sharedKnowledgeMap.containsKey(squadId)) {
-            sharedKnowledgeMap.put(squadId, new HashSet<>());
-        }
-        
-        // Add the point of interest
-        sharedKnowledgeMap.get(squadId).add(location);
-        
-        // Different behavior based on point of interest type
-        switch (type) {
-            case CHEST:
-            case VALUABLE_BLOCK:
-                // If it's a valuable target, have looters investigate
-                for (UUID memberId : squad.getMembers().keySet()) {
-                    if (squad.getMembers().get(memberId) == RaiderRole.LOOTER) {
-                        Entity member = plugin.getServer().getEntity(memberId);
-                        if (member instanceof Mob) {
-                            pathfindingManager.navigateTo((Mob)member, location, 1.0);
-                            break; // Just send one looter
-                        }
-                    }
+        if (squad != null) {
+            // Entity is in squad, share with squad members
+            for (UUID memberId : squad.getMembers().keySet()) {
+                Entity member = plugin.getServer().getEntity(memberId);
+                if (member instanceof Mob && member.isValid() && !member.isDead()) {
+                    pathfindingManager.navigateTo((Mob)member, location, speed);
                 }
-                break;
-                
-            case DANGER:
-                // Alert leader to danger
-                LivingEntity leader = getLeaderEntity(squad);
-                if (leader instanceof Mob) {
-                    // If leader is danger-aware, approach cautiously or set defenders
-                    if (getEntityIntelligence(leader) >= 3) {
-                        // Find defender(s) to investigate
-                        for (UUID memberId : squad.getMembers().keySet()) {
-                            if (squad.getMembers().get(memberId) == RaiderRole.TANK) {
-                                Entity member = plugin.getServer().getEntity(memberId);
-                                if (member instanceof Mob) {
-                                    pathfindingManager.navigateTo((Mob)member, location, 0.7);
-                                    break; // Just send one defender
-                                }
-                            }
-                        }
-                    }
-                }
-                break;
-                
-            case EXIT_POINT:
-                // Remember exit point for retreats
-                if (getRaidFromSquad(squad) != null) {
-                    getRaidFromSquad(squad).setMetadata("extraction_point", location);
-                }
-                break;
+            }
+        } else {
+            // Entity is not in squad, just navigate the entity
+            if (entity instanceof Mob) {
+                pathfindingManager.navigateTo((Mob)entity, location, speed);
+            }
         }
     }
     
@@ -1045,6 +1013,16 @@ public class RaiderCoordinationManager {
     }
     
     /**
+     * Get the squad that a member belongs to
+     */
+    private RaidSquad getSquadByMember(UUID entityId) {
+        UUID squadId = entitySquadMap.get(entityId);
+        if (squadId == null) return null;
+        
+        return activeSquads.get(squadId);
+    }
+    
+    /**
      * Contains data about a squad of raiders
      */
     public static class RaidSquad {
@@ -1091,6 +1069,30 @@ public class RaiderCoordinationManager {
         public void setFormation(SquadFormation formation) {
             this.formation = formation;
         }
+        
+        public boolean isActive() {
+            // Squad is active if:
+            // 1. It has members
+            // 2. The leader is still valid
+            if (members.isEmpty()) {
+                return false;
+            }
+            
+            // Check if squad is managed in an active raid
+            TownyRaider plugin = TownyRaider.getInstance();
+            ActiveRaid raid = plugin.getRaidManager().getActiveRaid(raidId);
+            if (raid == null) {
+                return false;
+            }
+            
+            // Check if leader is still valid
+            Entity leader = plugin.getServer().getEntity(leaderId);
+            if (leader == null || !leader.isValid() || leader.isDead()) {
+                return false;
+            }
+            
+            return true;
+        }
     }
     
     /**
@@ -1101,6 +1103,8 @@ public class RaiderCoordinationManager {
         TANK,       // Takes damage and engages in direct combat
         RANGED,     // Attacks from distance
         LOOTER,     // Focuses on stealing items
+        STEALER,    // Specialized chest thief
+        MINER,      // Specialized block thief
         MEMBER,     // Generic squad member
         LONE_WOLF   // Independent raider (solo)
     }

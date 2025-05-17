@@ -13,6 +13,7 @@ import org.bukkit.block.Chest;
 import org.bukkit.block.data.BlockData;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Zombie;
+import org.bukkit.entity.LivingEntity;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.scheduler.BukkitRunnable;
@@ -418,6 +419,11 @@ public class StealingManager {
         int currentThefts = raiderThefts.getOrDefault(zombie.getUniqueId(), 0);
         int maxTheftsPerRaider = plugin.getConfigManager().getMobConfig("baby-zombie").getInt("max-thefts", 5);
         
+        // Specialized miners can mine more blocks
+        if (isSpecializedMiner(zombie)) {
+            maxTheftsPerRaider = maxTheftsPerRaider * 2; // Double the limit for specialized miners
+        }
+        
         if (currentThefts >= maxTheftsPerRaider) {
             return;
         }
@@ -440,6 +446,12 @@ public class StealingManager {
         }
 
         int maxSteals = plugin.getConfigManager().getMobConfig("baby-zombie").getInt("max-steals", 5);
+        
+        // Specialized stealers can steal more items
+        if (isSpecializedStealer(zombie)) {
+            maxSteals = maxSteals * 2; // Double the limit for specialized stealers
+        }
+        
         int currentThefts = raiderThefts.getOrDefault(zombie.getUniqueId(), 0);
         
         if (currentThefts >= maxSteals) {
@@ -699,5 +711,86 @@ public class StealingManager {
         // ...
         
         return true;  // Successfully found and targeted a chest
+    }
+
+    // Add these methods to enhance stealing abilities for specialized roles
+
+    /**
+     * Check if an entity is a specialized stealer
+     */
+    public boolean isSpecializedStealer(Entity entity) {
+        if (!(entity instanceof LivingEntity)) return false;
+        
+        NamespacedKey specializationKey = new NamespacedKey(plugin, "specialized_stealer");
+        return ((LivingEntity)entity).getPersistentDataContainer()
+            .has(specializationKey, org.bukkit.persistence.PersistentDataType.BYTE);
+    }
+
+    /**
+     * Check if an entity is a specialized miner
+     */
+    public boolean isSpecializedMiner(Entity entity) {
+        if (!(entity instanceof LivingEntity)) return false;
+        
+        NamespacedKey specializationKey = new NamespacedKey(plugin, "specialized_miner");
+        return ((LivingEntity)entity).getPersistentDataContainer()
+            .has(specializationKey, org.bukkit.persistence.PersistentDataType.BYTE);
+    }
+
+    // Add a specialized method for miners to target high-value blocks specifically
+    public void directMinerToValuableBlock(Zombie zombie, ActiveRaid raid) {
+        if (!isSpecializedMiner(zombie)) return;
+        
+        // Define priority materials (from highest to lowest)
+        Material[] priorityBlocks = {
+            Material.NETHERITE_BLOCK,
+            Material.DIAMOND_BLOCK,
+            Material.EMERALD_BLOCK,
+            Material.GOLD_BLOCK,
+            Material.IRON_BLOCK,
+            Material.LAPIS_BLOCK,
+            Material.REDSTONE_BLOCK
+        };
+        
+        // Search for these blocks specifically
+        Block targetBlock = null;
+        Location location = zombie.getLocation();
+        int searchRadius = 30;
+        
+        // First try to find highest priority blocks
+        for (Material material : priorityBlocks) {
+            targetBlock = findSpecificBlockNearby(location, material, searchRadius);
+            if (targetBlock != null) {
+                break;
+            }
+        }
+        
+        // If none found, fall back to regular valuable blocks
+        if (targetBlock == null) {
+            targetBlock = findNearbyValuableBlock(location, searchRadius);
+        }
+        
+        // If block found, set as target
+        if (targetBlock != null) {
+            // Apply movement behavior toward block
+            plugin.getPathfindingManager().navigateTo((org.bukkit.entity.Mob)zombie, targetBlock.getLocation(), 1.1);
+        }
+    }
+
+    // Helper method to find a specific block type
+    private Block findSpecificBlockNearby(Location center, Material material, int radius) {
+        for (int x = -radius; x <= radius; x += 3) {
+            for (int y = -radius/2; y <= radius/2; y += 2) {
+                for (int z = -radius; z <= radius; z += 3) {
+                    Location checkLoc = center.clone().add(x, y, z);
+                    Block block = checkLoc.getBlock();
+                    
+                    if (block.getType() == material) {
+                        return block;
+                    }
+                }
+            }
+        }
+        return null;
     }
 }

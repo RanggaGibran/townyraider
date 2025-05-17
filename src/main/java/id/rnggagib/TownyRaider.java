@@ -21,6 +21,8 @@ import id.rnggagib.entity.ai.retreat.StrategicRetreatManager;
 
 public class TownyRaider extends JavaPlugin {
     private static final Logger LOGGER = Logger.getLogger("townyraider");
+    private static TownyRaider instance;
+    
     private ConfigManager configManager;
     private MessageManager messageManager;
     private CommandManager commandManager;
@@ -38,6 +40,9 @@ public class TownyRaider extends JavaPlugin {
 
     @Override
     public void onEnable() {
+        // Set static instance first
+        instance = this;
+        
         saveDefaultConfig();
         configManager = new ConfigManager(this);
         messageManager = new MessageManager(this);
@@ -106,6 +111,14 @@ public class TownyRaider extends JavaPlugin {
         }
         
         LOGGER.info("TownyRaider disabled");
+    }
+    
+    /**
+     * Get the singleton instance of the plugin
+     * @return The TownyRaider plugin instance
+     */
+    public static TownyRaider getInstance() {
+        return instance;
     }
     
     public ConfigManager getConfigManager() {

@@ -688,21 +688,25 @@ public class PathfindingManager {
         // Calculate movement vector
         Vector direction = waypointLoc.clone().subtract(entity.getLocation()).toVector().normalize();
         
+        // Calculate distance to waypoint - ADD THIS LINE
+        double distanceToWaypoint = entity.getLocation().distance(waypointLoc);
+        
         // Adjust speed based on waypoint type
         double adjustedSpeed = speed;
         if (waypoint.getType() == Waypoint.WaypointType.CAREFUL) {
             adjustedSpeed *= 0.5; // Slower for careful movement
         }
         
+        // REDUCE VELOCITY MAGNITUDE - Lower these values to slow down movement
+        double velocityMagnitude = Math.min(adjustedSpeed * 0.25, distanceToWaypoint * 0.1);
+        
         // Apply velocity with appropriate magnitude
-        double distanceToWaypoint = entity.getLocation().distance(waypointLoc);
-        double velocityMagnitude = Math.min(adjustedSpeed * 0.5, distanceToWaypoint * 0.2);
         entity.setVelocity(direction.multiply(velocityMagnitude));
         
         // Special handling for jump waypoints
         if (waypoint.getType() == Waypoint.WaypointType.JUMP && 
             entity.getLocation().distance(waypointLoc) < 2.0) {
-            entity.setVelocity(entity.getVelocity().setY(0.4));
+            entity.setVelocity(entity.getVelocity().setY(0.3)); // Reduced from 0.4
         }
     }
     

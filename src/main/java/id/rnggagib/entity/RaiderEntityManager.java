@@ -61,6 +61,12 @@ public class RaiderEntityManager {
             return;
         }
         
+        // Force load chunk before spawning
+        location.getChunk().load(true);
+        
+        // Make sure location is on a solid block with air above
+        location = ensureSafeSpawnLocation(location);
+        
         ConfigurationSection zombieConfig = plugin.getConfigManager().getMobConfig("baby-zombie");
         ConfigurationSection skeletonConfig = plugin.getConfigManager().getMobConfig("skeleton");
         
@@ -69,24 +75,77 @@ public class RaiderEntityManager {
         
         List<LivingEntity> raiders = new ArrayList<>();
         
+        // Add visual indicator when spawning
+        location.getWorld().spawnParticle(Particle.EXPLOSION_LARGE, location, 1);
+        
         for (int i = 0; i < zombieCount; i++) {
-            Zombie zombie = spawnRaiderZombie(raid, location, zombieConfig);
+            // Spread out spawn locations
+            Location zombieLocation = getRandomNearbyLocation(location, 3);
+            zombieLocation.getChunk().load(true);
+            
+            Zombie zombie = spawnRaiderZombie(raid, zombieLocation, zombieConfig);
             if (zombie != null) {
                 raiders.add(zombie);
                 raid.addRaiderEntity(zombie.getUniqueId());
                 
+                // Add visual effect to verify spawn
+                zombieLocation.getWorld().spawnParticle(Particle.SMOKE_LARGE, zombieLocation, 10, 0.5, 1, 0.5, 0.01);
+                
+                // Log exact spawn location for debugging
+                plugin.getLogger().info("Spawned zombie at: " + zombieLocation.getX() + ", " 
+                    + zombieLocation.getY() + ", " + zombieLocation.getZ());
+                
                 for (int j = 0; j < skeletonPerZombie; j++) {
-                    Location skeletonLocation = getRandomNearbyLocation(location, 3);
+                    Location skeletonLocation = getRandomNearbyLocation(zombieLocation, 2);
+                    skeletonLocation.getChunk().load(true);
                     Skeleton skeleton = spawnGuardianSkeleton(raid, skeletonLocation, skeletonConfig, zombie);
                     if (skeleton != null) {
                         raiders.add(skeleton);
                         raid.addRaiderEntity(skeleton.getUniqueId());
+                        
+                        // Add visual effect to verify spawn
+                        skeleton.getWorld().spawnParticle(Particle.SOUL, skeletonLocation, 10, 0.5, 1, 0.5, 0.01);
                     }
                 }
             }
         }
         
         plugin.getLogger().info("Spawned " + raiders.size() + " raid mobs for raid " + raid.getId());
+    }
+
+    /**
+     * Ensures the spawn location is safe (solid block below, air above)
+     */
+    private Location ensureSafeSpawnLocation(Location location) {
+        World world = location.getWorld();
+        
+        // Find the highest block at this X,Z
+        int y = world.getHighestBlockYAt(location);
+        Location safeLocation = new Location(world, location.getX(), y + 1, location.getZ());
+        
+        // Check if there's enough space for the mob
+        if (!safeLocation.getBlock().isEmpty() || 
+            !safeLocation.clone().add(0, 1, 0).getBlock().isEmpty()) {
+            
+            // Try to find a better location nearby
+            for (int xOffset = -3; xOffset <= 3; xOffset++) {
+                for (int zOffset = -3; zOffset <= 3; zOffset++) {
+                    Location checkLoc = new Location(world, 
+                        location.getX() + xOffset, 
+                        world.getHighestBlockYAt((int)location.getX() + xOffset, (int)location.getZ() + zOffset) + 1, 
+                        location.getZ() + zOffset);
+                    
+                    if (checkLoc.getBlock().isEmpty() && 
+                        checkLoc.clone().add(0, 1, 0).getBlock().isEmpty() &&
+                        !checkLoc.clone().subtract(0, 1, 0).getBlock().isEmpty()) {
+                        
+                        return checkLoc;
+                    }
+                }
+            }
+        }
+        
+        return safeLocation;
     }
 
     /**
@@ -681,7 +740,7 @@ public class RaiderEntityManager {
         return new Location(world, center.getX(), center.getY() + 3, center.getZ());
     }
 
-    // Add this method to keep chunks loaded during raids
+    // Enhance chunk loading for raids
     public void keepRaidChunksLoaded(ActiveRaid raid) {
         Location raidLocation = raid.getLocation();
         if (raidLocation == null) return;
@@ -693,12 +752,17 @@ public class RaiderEntityManager {
         // Load a 5x5 chunk area around the raid center
         for (int x = centerX - 2; x <= centerX + 2; x++) {
             for (int z = centerZ - 2; z <= centerZ + 2; z++) {
-                world.loadChunk(x, z, true);
+                if (!world.isChunkLoaded(x, z)) {
+                    world.loadChunk(x, z, true);
+                }
                 world.setChunkForceLoaded(x, z, true);
+                
+                // Debug message
+                plugin.getLogger().info("Forced chunk loaded at " + x + ", " + z);
             }
         }
         
-        // Schedule a task to keep entities alive and verify they exist
+        // Schedule a task to verify chunks remain loaded
         new BukkitRunnable() {
             @Override
             public void run() {
@@ -708,10 +772,21 @@ public class RaiderEntityManager {
                     return;
                 }
                 
+                // Verify chunks are still loaded
+                for (int x = centerX - 2; x <= centerX + 2; x++) {
+                    for (int z = centerZ - 2; z <= centerZ + 2; z++) {
+                        if (!world.isChunkLoaded(x, z)) {
+                            world.loadChunk(x, z, true);
+                            world.setChunkForceLoaded(x, z, true);
+                            plugin.getLogger().warning("Had to reload chunk at " + x + ", " + z);
+                        }
+                    }
+                }
+                
                 // Check if mob entities still exist and respawn if needed
                 verifyAndRespawnRaidMobs(raid);
             }
-        }.runTaskTimer(plugin, 100L, 200L); // Check every 10 seconds
+        }.runTaskTimer(plugin, 20L, 100L); // Check more frequently (every 5 seconds)
     }
 
     // Add this method to verify raid mobs exist and respawn them if needed

@@ -59,7 +59,7 @@ public class TacticalBehavior {
         for (UUID tankId : tanks) {
             Entity entity = plugin.getServer().getEntity(tankId);
             if (entity instanceof Mob) {
-                pathfindingManager.navigateTo((Mob)entity, flankPos, 1.2);
+                pathfindingManager.navigateTo((Mob)entity, flankPos, 0.7); // Reduced from 1.2
             }
         }
         
@@ -68,7 +68,7 @@ public class TacticalBehavior {
         for (UUID rangerId : ranged) {
             Entity entity = plugin.getServer().getEntity(rangerId);
             if (entity instanceof Mob) {
-                pathfindingManager.navigateTo((Mob)entity, flankPos, 1.2);
+                pathfindingManager.navigateTo((Mob)entity, flankPos, 0.7); // Reduced from 1.2
             }
         }
         
@@ -98,7 +98,7 @@ public class TacticalBehavior {
         for (UUID entityId : others) {
             Entity entity = plugin.getServer().getEntity(entityId);
             if (entity instanceof Mob) {
-                pathfindingManager.navigateTo((Mob)entity, exitPoint, 1.2);
+                pathfindingManager.navigateTo((Mob)entity, exitPoint, 0.8); // Reduced from 1.2
             }
         }
         
@@ -110,7 +110,7 @@ public class TacticalBehavior {
                     for (UUID rangerId : ranged) {
                         Entity entity = plugin.getServer().getEntity(rangerId);
                         if (entity instanceof Mob) {
-                            pathfindingManager.navigateTo((Mob)entity, exitPoint, 1.2);
+                            pathfindingManager.navigateTo((Mob)entity, exitPoint, 0.8); // Reduced from 1.2
                         }
                     }
                 }
@@ -147,7 +147,7 @@ public class TacticalBehavior {
             Entity entity = plugin.getServer().getEntity(distractorId);
             if (entity instanceof Mob) {
                 // Make noise, attack players, be visible
-                pathfindingManager.navigateTo((Mob)entity, targetLocation, 1.1);
+                pathfindingManager.navigateTo((Mob)entity, targetLocation, 0.7); // Reduced from 1.1
                 
                 if (entity instanceof LivingEntity) {
                     // Add glowing effect to make them obvious targets
@@ -164,7 +164,7 @@ public class TacticalBehavior {
         for (UUID looterId : looters) {
             Entity entity = plugin.getServer().getEntity(looterId);
             if (entity instanceof Mob) {
-                pathfindingManager.navigateTo((Mob)entity, lootLocation, 0.8);
+                pathfindingManager.navigateTo((Mob)entity, lootLocation, 0.5); // Reduced from 0.8
             }
         }
     }
