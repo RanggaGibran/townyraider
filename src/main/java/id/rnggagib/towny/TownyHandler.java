@@ -275,4 +275,72 @@ public class TownyHandler {
         townRaidCooldowns.clear();
         townRaidCooldowns.putAll(cooldowns);
     }
+
+    /**
+     * Get the town at a specific location
+     * @param location the location
+     * @return the town at the location, or null if there is no town
+     */
+    public Town getTownAtLocation(Location location) {
+        if (location == null) {
+            return null;
+        }
+        
+        try {
+            TownBlock townBlock = TownyAPI.getInstance().getTownBlock(location);
+            if (townBlock != null) {
+                return townBlock.getTown();
+            }
+        } catch (Exception e) {
+            // Ignore - location is not in a town
+        }
+        
+        return null;
+    }
+
+    /**
+     * Check if a town is on raid cooldown
+     * @param town the town to check
+     * @return true if the town is on cooldown, false otherwise
+     */
+    public boolean isTownOnRaidCooldown(Town town) {
+        return isOnCooldown(town);
+    }
+
+    /**
+     * Get a random location within a town
+     * @param town the town to get a location in
+     * @return a random location in the town, or null if no suitable location is found
+     */
+    public Location getRandomLocationInTown(Town town) {
+        try {
+            // Get all town blocks for this town
+            Set<TownBlock> townBlocks = new HashSet<>(town.getTownBlocks());
+            if (townBlocks.isEmpty()) {
+                return getTownSpawnLocation(town);
+            }
+            
+            // Pick a random town block
+            List<TownBlock> blockList = new ArrayList<>(townBlocks);
+            TownBlock randomBlock = blockList.get((int) (Math.random() * blockList.size()));
+            
+            // Get world and coordinates
+            World world = Bukkit.getWorld(randomBlock.getWorld().getName());
+            if (world == null) {
+                return getTownSpawnLocation(town);
+            }
+            
+            // Calculate block center coordinates
+            int blockX = randomBlock.getX() * 16 + 8; // Center of the block
+            int blockZ = randomBlock.getZ() * 16 + 8;
+            
+            // Get the highest block at this location for safety
+            int blockY = world.getHighestBlockYAt(blockX, blockZ);
+            
+            return new Location(world, blockX, blockY + 1, blockZ);
+        } catch (Exception e) {
+            plugin.getLogger().warning("Error getting random town location: " + e.getMessage());
+            return getTownSpawnLocation(town);
+        }
+    }
 }

@@ -2,6 +2,7 @@ package id.rnggagib.command;
 
 import id.rnggagib.TownyRaider;
 import id.rnggagib.message.MessageManager;
+import id.rnggagib.command.admin.AdminCommand;
 
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
@@ -29,6 +30,7 @@ public class TownyRaiderCommand implements CommandExecutor, TabCompleter {
         subCommands.put("status", new StatusCommand(plugin));
         subCommands.put("toggle", new ToggleCommand(plugin));
         subCommands.put("help", new HelpCommand(plugin, subCommands));
+        subCommands.put("admin", new AdminCommand(plugin));
     }
 
     @Override

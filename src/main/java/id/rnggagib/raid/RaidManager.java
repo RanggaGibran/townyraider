@@ -270,4 +270,65 @@ public class RaidManager {
             endRaid(raid.getId());
         }
     }
+
+    /**
+     * Check if a town is currently under raid
+     * @param townName the name of the town
+     * @return true if the town is under raid, false otherwise
+     */
+    public boolean isTownUnderRaid(String townName) {
+        return activeRaids.values().stream()
+            .anyMatch(raid -> raid.getTownName().equalsIgnoreCase(townName));
+    }
+
+    /**
+     * Manually start a raid on a specific town
+     * @param town the town to raid
+     * @return true if the raid was successfully started, false otherwise
+     */
+    public boolean startRaidOnTown(Town town) {
+        if (town == null || !raidsEnabled) {
+            return false;
+        }
+        
+        if (isTownUnderRaid(town.getName())) {
+            return false;
+        }
+        
+        try {
+            Location raidLocation = townyHandler.getRandomLocationInTown(town);
+            if (raidLocation == null) {
+                return false;
+            }
+            
+            UUID raidId = UUID.randomUUID();
+            ActiveRaid raid = new ActiveRaid(raidId, town.getName());
+            raid.setLocation(raidLocation);
+            activeRaids.put(raidId, raid);
+            
+            plugin.getRaiderEntityManager().spawnRaidMobs(raid, raidLocation);
+            
+            plugin.getVisualEffectsManager().createRaidBossBar(raid);
+            plugin.getVisualEffectsManager().createRaidBorderEffects(raid);
+            
+            plugin.getProtectionManager().setupProtectionForRaid(raid);
+            
+            Map<String, String> placeholders = new HashMap<>();
+            placeholders.put("town", town.getName());
+            townyHandler.notifyTownMembers(town, "raid-start", placeholders);
+            
+            // Don't put town on cooldown for admin-started raids
+            
+            int raidDuration = plugin.getConfigManager().getRaidDuration();
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                endRaid(raid.getId());
+            }, 20L * 60 * raidDuration);
+            
+            return true;
+        } catch (Exception e) {
+            plugin.getLogger().severe("Error starting admin raid on town " + town.getName() + ": " + e.getMessage());
+            e.printStackTrace();
+            return false;
+        }
+    }
 }
