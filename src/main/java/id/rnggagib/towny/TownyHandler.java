@@ -12,6 +12,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Sound;
 import org.bukkit.World;
+import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.RegisteredServiceProvider;
 
@@ -19,6 +20,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -320,24 +322,37 @@ public class TownyHandler {
                 return getTownSpawnLocation(town);
             }
             
-            // Pick a random town block
+            // Try multiple blocks in case some are not suitable
             List<TownBlock> blockList = new ArrayList<>(townBlocks);
-            TownBlock randomBlock = blockList.get((int) (Math.random() * blockList.size()));
+            Collections.shuffle(blockList); // Randomize the list
             
-            // Get world and coordinates
-            World world = Bukkit.getWorld(randomBlock.getWorld().getName());
-            if (world == null) {
-                return getTownSpawnLocation(town);
+            for (TownBlock townBlock : blockList) {
+                World world = Bukkit.getWorld(townBlock.getWorld().getName());
+                if (world == null) continue;
+                
+                // Calculate block center coordinates
+                int blockX = townBlock.getX() * 16 + 8; // Center of the block
+                int blockZ = townBlock.getZ() * 16 + 8;
+                
+                // Get the highest block at this location for safety
+                int blockY = world.getHighestBlockYAt(blockX, blockZ);
+                
+                Location loc = new Location(world, blockX, blockY + 1.5, blockZ);
+                
+                // Check if location is safe for spawning
+                Block block = loc.getBlock();
+                Block blockBelow = loc.clone().add(0, -1, 0).getBlock();
+                
+                if (!block.isLiquid() && !blockBelow.isLiquid() && 
+                    blockBelow.getType().isSolid() &&
+                    loc.clone().add(0, 1, 0).getBlock().isEmpty()) {
+                    
+                    return loc;
+                }
             }
             
-            // Calculate block center coordinates
-            int blockX = randomBlock.getX() * 16 + 8; // Center of the block
-            int blockZ = randomBlock.getZ() * 16 + 8;
-            
-            // Get the highest block at this location for safety
-            int blockY = world.getHighestBlockYAt(blockX, blockZ);
-            
-            return new Location(world, blockX, blockY + 1, blockZ);
+            // Fallback to town spawn if no suitable location found
+            return getTownSpawnLocation(town);
         } catch (Exception e) {
             plugin.getLogger().warning("Error getting random town location: " + e.getMessage());
             return getTownSpawnLocation(town);

@@ -17,6 +17,7 @@ import org.bukkit.entity.Zombie;
 import org.bukkit.metadata.FixedMetadataValue;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
+import org.bukkit.block.Block;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -230,11 +231,36 @@ public class RaiderEntityManager {
     }
 
     private Location getRandomNearbyLocation(Location center, int radius) {
-        double x = center.getX() + (Math.random() * 2 - 1) * radius;
-        double z = center.getZ() + (Math.random() * 2 - 1) * radius;
         World world = center.getWorld();
-        int y = world.getHighestBlockYAt((int) x, (int) z);
         
-        return new Location(world, x, y + 1, z);
+        // Try multiple times to find a suitable location
+        for (int attempts = 0; attempts < 10; attempts++) {
+            double x = center.getX() + (Math.random() * 2 - 1) * radius;
+            double z = center.getZ() + (Math.random() * 2 - 1) * radius;
+            int y = world.getHighestBlockYAt((int) x, (int) z);
+            
+            // Create location with a more generous height buffer
+            Location loc = new Location(world, x, y + 1.5, z);
+            
+            // Check if the location is valid (not in water or lava)
+            Block block = loc.getBlock();
+            Block blockBelow = loc.clone().add(0, -1, 0).getBlock();
+            
+            if (!block.isLiquid() && !blockBelow.isLiquid() && 
+                blockBelow.getType().isSolid() && 
+                !blockBelow.getType().toString().contains("SLAB") && 
+                !blockBelow.getType().toString().contains("STAIRS")) {
+                
+                // Ensure there's enough space (2 blocks) for the mob to spawn
+                if (loc.clone().add(0, 1, 0).getBlock().isEmpty() && 
+                    loc.clone().add(0, 2, 0).getBlock().isEmpty()) {
+                    
+                    return loc;
+                }
+            }
+        }
+        
+        // Fallback to a safer spawn location if no suitable location found
+        return new Location(world, center.getX(), center.getY() + 3, center.getZ());
     }
 }

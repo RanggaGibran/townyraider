@@ -48,6 +48,7 @@ public class SimpleAiManager {
         this.retreatingKey = new NamespacedKey(plugin, "retreating");
         
         startAiTasks();
+        startRescueTask(); // Add this line
     }
 
     public void applyRaiderAI(LivingEntity entity, ActiveRaid raid, String raiderType) {
@@ -199,6 +200,26 @@ public class SimpleAiManager {
         }.runTaskTimer(plugin, PATH_UPDATE_INTERVAL * 10, PATH_UPDATE_INTERVAL * 10);
     }
     
+    private void startRescueTask() {
+        new BukkitRunnable() {
+            @Override
+            public void run() {
+                // Iterate through all AI-managed entities
+                for (UUID entityId : new ArrayList<>(targetLocations.keySet())) {
+                    Entity entity = findEntityByUuid(entityId);
+                    if (entity instanceof LivingEntity) {
+                        LivingEntity living = (LivingEntity) entity;
+                        
+                        // Check if entity is in problematic situation
+                        if (isStuck(living)) {
+                            rescueEntity(living);
+                        }
+                    }
+                }
+            }
+        }.runTaskTimer(plugin, 100L, 100L); // Check every 5 seconds (100 ticks)
+    }
+
     private boolean shouldRetreat(LivingEntity entity) {
         double healthPercent = entity.getHealth() / entity.getAttribute(org.bukkit.attribute.Attribute.GENERIC_MAX_HEALTH).getValue();
         boolean healthLow = healthPercent <= RETREAT_HEALTH_THRESHOLD;
@@ -363,6 +384,61 @@ public class SimpleAiManager {
         return null;
     }
     
+    private boolean isStuck(LivingEntity entity) {
+        // Check if in water/lava
+        Block blockAt = entity.getLocation().getBlock();
+        if (blockAt.isLiquid()) {
+            return true;
+        }
+        
+        // Check if has nowhere to move (surrounded by blocks)
+        Location loc = entity.getLocation();
+        int blockedSides = 0;
+        for (int x = -1; x <= 1; x += 2) {
+            if (!loc.clone().add(x, 0, 0).getBlock().isPassable()) blockedSides++;
+        }
+        for (int z = -1; z <= 1; z += 2) {
+            if (!loc.clone().add(0, 0, z).getBlock().isPassable()) blockedSides++;
+        }
+        if (blockedSides >= 4) return true;
+        
+        return false;
+    }
+
+    private void rescueEntity(LivingEntity entity) {
+        // Get current location
+        Location current = entity.getLocation();
+        World world = current.getWorld();
+        
+        // Find the highest block at this XZ coordinate
+        int highestY = world.getHighestBlockYAt(current.getBlockX(), current.getBlockZ());
+        
+        // Teleport the entity to above the highest block with a margin
+        Location safeLocation = new Location(
+            world, 
+            current.getX(), 
+            highestY + 1.5, 
+            current.getZ(),
+            current.getYaw(),
+            current.getPitch()
+        );
+        
+        // Ensure there's enough space
+        if (safeLocation.getBlock().isEmpty() && 
+            safeLocation.clone().add(0, 1, 0).getBlock().isEmpty()) {
+            
+            // Teleport and add a small upward velocity to prevent immediate falling
+            entity.teleport(safeLocation);
+            entity.setVelocity(new Vector(0, 0.1, 0));
+            
+            // Log the rescue if debug is enabled
+            if (plugin.getConfigManager().isDebugEnabled()) {
+                plugin.getLogger().info("Rescued stuck entity: " + entity.getType() + 
+                    " at " + safeLocation.getBlockX() + "," + safeLocation.getBlockY() + "," + safeLocation.getBlockZ());
+            }
+        }
+    }
+
     public void cleanup() {
         for (BukkitRunnable task : aiTasks.values()) {
             task.cancel();
