@@ -5,10 +5,12 @@ import org.bukkit.Location;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class ActiveRaid {
     private final UUID id;
@@ -17,7 +19,10 @@ public class ActiveRaid {
     private int stolenItems;
     private final List<UUID> raiderEntities;
     private Location location;
-    private final Map<String, Object> metadata = new HashMap<>();
+    private final Map<String, Object> metadata = new ConcurrentHashMap<>();
+    private final Map<String, Object> metadataCache = new ConcurrentHashMap<>();
+    private final ReadWriteLock metadataLock = new ReentrantReadWriteLock();
+    private static final List<Location> EMPTY_LOCATION_LIST = Collections.emptyList();
 
     public ActiveRaid(UUID id, String townName) {
         this.id = id;
@@ -89,21 +94,43 @@ public class ActiveRaid {
     }
 
     /**
-     * Sets metadata for this raid
+     * Sets metadata for this raid with improved performance
      * @param key The metadata key
      * @param value The metadata value
      */
     public void setMetadata(String key, Object value) {
         metadata.put(key, value);
+        
+        // Update cache if this is a frequently accessed key
+        if (key.equals("chest_locations") || key.equals("spawn_locations")) {
+            metadataCache.put(key, value);
+        } else {
+            // Clear cache entry if it exists but isn't in the frequently accessed list
+            metadataCache.remove(key);
+        }
     }
 
     /**
-     * Gets metadata for this raid
+     * Gets metadata for this raid with improved performance
      * @param key The metadata key
      * @return The metadata value, or null if not found
      */
     public Object getMetadata(String key) {
-        return metadata.get(key);
+        // Check cache first
+        Object cachedValue = metadataCache.get(key);
+        if (cachedValue != null) {
+            return cachedValue;
+        }
+        
+        // Get from main storage
+        Object value = metadata.get(key);
+        
+        // Cache frequently accessed keys (you can customize this logic)
+        if (value != null && (key.equals("chest_locations") || key.equals("spawn_locations"))) {
+            metadataCache.put(key, value);
+        }
+        
+        return value;
     }
 
     /**
@@ -143,9 +170,95 @@ public class ActiveRaid {
     }
 
     /**
-     * Clear all metadata
+     * Bulk set multiple metadata values atomically
+     * @param metadataMap Map of metadata key-value pairs to set
+     */
+    public void setMultipleMetadata(Map<String, Object> metadataMap) {
+        metadataLock.writeLock().lock();
+        try {
+            for (Map.Entry<String, Object> entry : metadataMap.entrySet()) {
+                setMetadata(entry.getKey(), entry.getValue());
+            }
+        } finally {
+            metadataLock.writeLock().unlock();
+        }
+    }
+
+    /**
+     * Clear all metadata with improved performance
      */
     public void clearMetadata() {
-        metadata.clear();
+        metadataLock.writeLock().lock();
+        try {
+            metadata.clear();
+            metadataCache.clear();
+        } finally {
+            metadataLock.writeLock().unlock();
+        }
+    }
+
+    /**
+     * Gets a String metadata value
+     * @param key The metadata key
+     * @param defaultValue Value to return if not found or wrong type
+     * @return The metadata value as String, or defaultValue if not found
+     */
+    public String getStringMetadata(String key, String defaultValue) {
+        Object value = getMetadata(key);
+        return value instanceof String ? (String)value : defaultValue;
+    }
+
+    /**
+     * Gets an Integer metadata value
+     * @param key The metadata key
+     * @param defaultValue Value to return if not found or wrong type
+     * @return The metadata value as Integer, or defaultValue if not found
+     */
+    public int getIntMetadata(String key, int defaultValue) {
+        Object value = getMetadata(key);
+        if (value instanceof Number) {
+            return ((Number)value).intValue();
+        }
+        return defaultValue;
+    }
+
+    /**
+     * Gets a Double metadata value
+     * @param key The metadata key
+     * @param defaultValue Value to return if not found or wrong type
+     * @return The metadata value as Double, or defaultValue if not found
+     */
+    public double getDoubleMetadata(String key, double defaultValue) {
+        Object value = getMetadata(key);
+        if (value instanceof Number) {
+            return ((Number)value).doubleValue();
+        }
+        return defaultValue;
+    }
+
+    /**
+     * Gets a Boolean metadata value
+     * @param key The metadata key
+     * @param defaultValue Value to return if not found or wrong type
+     * @return The metadata value as Boolean, or defaultValue if not found
+     */
+    public boolean getBooleanMetadata(String key, boolean defaultValue) {
+        Object value = getMetadata(key);
+        return value instanceof Boolean ? (Boolean)value : defaultValue;
+    }
+
+    /**
+     * Gets a List of Locations metadata value with improved performance
+     * @param key The metadata key
+     * @return The metadata value as List of Locations, or empty list if not found
+     */
+    @SuppressWarnings("unchecked")
+    public List<Location> getLocationListMetadata(String key) {
+        Object value = getMetadata(key);
+        if (value instanceof List && !((List<?>)value).isEmpty() && ((List<?>)value).get(0) instanceof Location) {
+            return (List<Location>)value;
+        }
+        // Return static empty list instead of creating a new ArrayList
+        return EMPTY_LOCATION_LIST;
     }
 }

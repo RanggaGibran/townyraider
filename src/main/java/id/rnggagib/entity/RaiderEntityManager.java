@@ -19,9 +19,15 @@ import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.block.Block;
 import org.bukkit.scheduler.BukkitRunnable;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.Material;
+import org.bukkit.potion.PotionEffect;
+import org.bukkit.potion.PotionEffectType;
+import org.bukkit.Particle;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
 import java.util.UUID;
 
 public class RaiderEntityManager {
@@ -85,57 +91,53 @@ public class RaiderEntityManager {
         
         Zombie zombie = (Zombie) world.spawnEntity(location, EntityType.ZOMBIE);
         
-        // Using the setAge method instead of the deprecated setBaby
-        zombie.setAge(-2400); // Setting age to make it a baby zombie
-        zombie.setCustomName(config.getString("name", "Raider Zombie"));
+        // Always ensure it's a baby zombie
+        zombie.setBaby(true);
+        zombie.setCustomName(config.getString("name", "Towny Plunderer"));
         zombie.setCustomNameVisible(true);
         
-        // Significantly increase health
+        // Enhanced health and abilities
         if (zombie.getAttribute(Attribute.GENERIC_MAX_HEALTH) != null) {
-            double health = config.getDouble("health", 25.0); // Increased from 10.0
+            double health = config.getDouble("health", 15.0); // Increased health
             zombie.getAttribute(Attribute.GENERIC_MAX_HEALTH).setBaseValue(health);
             zombie.setHealth(health);
         }
         
         if (zombie.getAttribute(Attribute.GENERIC_MOVEMENT_SPEED) != null) {
-            double speed = config.getDouble("speed", 0.3);
+            double speed = config.getDouble("speed", 0.35); // Increased speed
             zombie.getAttribute(Attribute.GENERIC_MOVEMENT_SPEED).setBaseValue(speed);
         }
         
-        // Add armor for damage reduction
-        zombie.getEquipment().setHelmet(new org.bukkit.inventory.ItemStack(org.bukkit.Material.LEATHER_HELMET));
-        zombie.getEquipment().setChestplate(new org.bukkit.inventory.ItemStack(org.bukkit.Material.LEATHER_CHESTPLATE));
-        zombie.getEquipment().setItemInMainHand(new org.bukkit.inventory.ItemStack(org.bukkit.Material.WOODEN_SWORD));
+        // Add better equipment
+        zombie.getEquipment().setHelmet(new ItemStack(Material.GOLDEN_HELMET));
+        zombie.getEquipment().setChestplate(new ItemStack(Material.LEATHER_CHESTPLATE));
+        zombie.getEquipment().setBoots(new ItemStack(Material.GOLDEN_BOOTS)); // Added boots for speed
+        zombie.getEquipment().setItemInMainHand(new ItemStack(Material.IRON_SHOVEL)); // Thief's tool
         
         // Set all drop chances to 0
         zombie.getEquipment().setHelmetDropChance(0f);
         zombie.getEquipment().setChestplateDropChance(0f);
+        zombie.getEquipment().setBootsDropChance(0f);
         zombie.getEquipment().setItemInMainHandDropChance(0f);
         
         // Add knockback resistance
         if (zombie.getAttribute(Attribute.GENERIC_KNOCKBACK_RESISTANCE) != null) {
-            zombie.getAttribute(Attribute.GENERIC_KNOCKBACK_RESISTANCE).setBaseValue(0.5); // 50% knockback resistance
+            zombie.getAttribute(Attribute.GENERIC_KNOCKBACK_RESISTANCE).setBaseValue(0.3); // 30% resistance
         }
         
-        // Add damage resistance effect
-        zombie.addPotionEffect(new org.bukkit.potion.PotionEffect(
-            org.bukkit.potion.PotionEffectType.DAMAGE_RESISTANCE, 
-            Integer.MAX_VALUE, 
-            1, // Resistance II (40% damage reduction)
-            false, 
-            false)
-        );
+        // Improved combat stats
+        if (zombie.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE) != null) {
+            zombie.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE).setBaseValue(2.0); // Lower damage - focus on stealing
+        }
         
-        // Set mob properties from config
-        zombie.setBaby(true); // Make it a baby zombie
+        // Better survivability with effects
+        zombie.addPotionEffect(new PotionEffect(PotionEffectType.DAMAGE_RESISTANCE, Integer.MAX_VALUE, 0, false, false));
+        zombie.addPotionEffect(new PotionEffect(PotionEffectType.FIRE_RESISTANCE, Integer.MAX_VALUE, 1, false, false));
+        
+        // Make zombies avoid water (smarter pathing)
+        zombie.setCanBreakDoors(false); // Focus on chest stealing, not door breaking
         zombie.setRemoveWhenFarAway(false);
         zombie.setPersistent(true);
-        
-        // Make immune to fire
-        zombie.setFireTicks(0);
-        zombie.addPotionEffect(new org.bukkit.potion.PotionEffect(org.bukkit.potion.PotionEffectType.FIRE_RESISTANCE, Integer.MAX_VALUE, 1, false, false));
-        zombie.setVisualFire(false); // Don't show fire effect
-        zombie.setInvisible(false);
         
         // Apply metadata to identify this as a raid entity
         zombie.getPersistentDataContainer().set(
@@ -144,10 +146,37 @@ public class RaiderEntityManager {
             "baby-zombie"
         );
         
+        // Store intelligence level in metadata for varied behavior
+        zombie.getPersistentDataContainer().set(
+            new NamespacedKey(plugin, "intelligence"), 
+            PersistentDataType.INTEGER, 
+            new Random().nextInt(3) + 1 // Intelligence level 1-3
+        );
+        
         markAsRaider(zombie, raid.getId(), RAIDER_TYPE_ZOMBIE);
         
+        // Apply visual effects
         plugin.getVisualEffectsManager().applyGlowEffect(zombie, "baby-zombie");
         
+        // Add particle trail
+        new BukkitRunnable() {
+            @Override
+            public void run() {
+                if (!zombie.isValid() || zombie.isDead()) {
+                    this.cancel();
+                    return;
+                }
+                
+                // Gold coin particles trail
+                zombie.getWorld().spawnParticle(
+                    Particle.VILLAGER_HAPPY,
+                    zombie.getLocation().add(0, 0.5, 0),
+                    2, 0.2, 0.2, 0.2, 0.01
+                );
+            }
+        }.runTaskTimer(plugin, 20L, 20L);
+        
+        // Apply AI behavior
         aiManager.applyRaiderAI(zombie, raid, RAIDER_TYPE_ZOMBIE);
         
         return zombie;
@@ -179,10 +208,10 @@ public class RaiderEntityManager {
         }
         
         // Add armor for damage reduction
-        skeleton.getEquipment().setHelmet(new org.bukkit.inventory.ItemStack(org.bukkit.Material.CHAINMAIL_HELMET));
-        skeleton.getEquipment().setChestplate(new org.bukkit.inventory.ItemStack(org.bukkit.Material.CHAINMAIL_CHESTPLATE));
-        skeleton.getEquipment().setLeggings(new org.bukkit.inventory.ItemStack(org.bukkit.Material.CHAINMAIL_LEGGINGS));
-        skeleton.getEquipment().setItemInMainHand(new org.bukkit.inventory.ItemStack(org.bukkit.Material.BOW));
+        skeleton.getEquipment().setHelmet(new ItemStack(Material.CHAINMAIL_HELMET));
+        skeleton.getEquipment().setChestplate(new ItemStack(Material.CHAINMAIL_CHESTPLATE));
+        skeleton.getEquipment().setLeggings(new ItemStack(Material.CHAINMAIL_LEGGINGS));
+        skeleton.getEquipment().setItemInMainHand(new ItemStack(Material.BOW));
         
         // Set all drop chances to 0
         skeleton.getEquipment().setHelmetDropChance(0f);
@@ -196,8 +225,8 @@ public class RaiderEntityManager {
         }
         
         // Add damage resistance effect
-        skeleton.addPotionEffect(new org.bukkit.potion.PotionEffect(
-            org.bukkit.potion.PotionEffectType.DAMAGE_RESISTANCE, 
+        skeleton.addPotionEffect(new PotionEffect(
+            PotionEffectType.DAMAGE_RESISTANCE, 
             Integer.MAX_VALUE, 
             1, // Resistance II (40% damage reduction)
             false, 
@@ -210,7 +239,7 @@ public class RaiderEntityManager {
         
         // Make immune to fire
         skeleton.setFireTicks(0);
-        skeleton.addPotionEffect(new org.bukkit.potion.PotionEffect(org.bukkit.potion.PotionEffectType.FIRE_RESISTANCE, Integer.MAX_VALUE, 1, false, false)); // Fire resistance
+        skeleton.addPotionEffect(new PotionEffect(PotionEffectType.FIRE_RESISTANCE, Integer.MAX_VALUE, 1, false, false)); // Fire resistance
         skeleton.setVisualFire(false); // Don't show fire effect
         skeleton.setInvisible(false);
         

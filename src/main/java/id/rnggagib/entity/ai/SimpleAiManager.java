@@ -19,6 +19,7 @@ import org.bukkit.metadata.FixedMetadataValue;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.util.Vector;
+import org.bukkit.Particle;
 
 import com.palmergames.bukkit.towny.object.Town;
 
@@ -62,7 +63,20 @@ public class SimpleAiManager {
     }
     
     public void applyZombieAI(Zombie zombie, ActiveRaid raid) {
+        // Get intelligence level for this zombie
+        int intelligence = 1; // Default
+        NamespacedKey intelligenceKey = new NamespacedKey(plugin, "intelligence");
+        if (zombie.getPersistentDataContainer().has(intelligenceKey, PersistentDataType.INTEGER)) {
+            intelligence = zombie.getPersistentDataContainer().get(intelligenceKey, PersistentDataType.INTEGER);
+        }
+        
+        final int zombieIntelligence = intelligence;
+        
         BukkitRunnable aiTask = new BukkitRunnable() {
+            private int stuckCounter = 0;
+            private Location lastLocation = zombie.getLocation();
+            private int priorityChestCheckCooldown = 0;
+            
             @Override
             public void run() {
                 if (!zombie.isValid() || zombie.isDead()) {
@@ -75,18 +89,47 @@ public class SimpleAiManager {
                     ((Mob) zombie).setTarget(null);
                 }
                 
-                if (isRetreating(zombie)) {
+                // Check if zombie is currently fleeing
+                if (isRetreating(zombie) || isZombieFleeing(zombie)) {
                     return;
+                }
+                
+                // Check if zombie is stuck
+                if (zombie.getLocation().distanceSquared(lastLocation) < 0.2) {
+                    stuckCounter++;
+                    if (stuckCounter > 5) { // Stuck for 5 seconds
+                        // Try to unstuck by small teleport or jumping
+                        unstuckZombie(zombie);
+                        stuckCounter = 0;
+                    }
+                } else {
+                    stuckCounter = 0;
+                    lastLocation = zombie.getLocation();
+                }
+                
+                // Reduce cooldown for more intelligent zombies
+                priorityChestCheckCooldown--;
+                
+                // More intelligent zombies look for chests more frequently
+                if (priorityChestCheckCooldown <= 0) {
+                    // Direct the zombie to the nearest valuable chest with higher intelligence
+                    if (zombieIntelligence > 1 && Math.random() < 0.4 * zombieIntelligence) {
+                        plugin.getStealingManager().directZombieTowardChest(zombie, raid);
+                        priorityChestCheckCooldown = 10 - (zombieIntelligence * 2); // Intelligence reduces cooldown
+                        return;
+                    }
                 }
                 
                 Location targetLocation = targetLocations.get(zombie.getUniqueId());
                 
-                // Increase the chance to find a new target to make zombies more active in finding valuables
-                if (targetLocation == null || zombie.getLocation().distance(targetLocation) < 2.0 
-                        || Math.random() < 0.15) { // Increased from 0.05
+                // Higher intelligence zombies change targets more strategically
+                boolean shouldFindNewTarget = targetLocation == null || 
+                    zombie.getLocation().distance(targetLocation) < 2.0 || 
+                    Math.random() < (0.05 + (zombieIntelligence * 0.05)); // 5-20% chance based on intelligence
                     
+                if (shouldFindNewTarget) {
                     // First try to find chests - prioritize chests over blocks
-                    Chest nearbyChest = findNearbyChest(zombie.getLocation(), TARGET_SEARCH_RADIUS);
+                    Chest nearbyChest = findNearbyChest(zombie.getLocation(), TARGET_SEARCH_RADIUS + zombieIntelligence);
                     if (nearbyChest != null) {
                         Location chestLoc = nearbyChest.getLocation();
                         targetLocations.put(zombie.getUniqueId(), chestLoc);
@@ -98,6 +141,15 @@ public class SimpleAiManager {
                             chestLoc.getBlockY() + "," + 
                             chestLoc.getBlockZ()
                         );
+                        
+                        // Show searching animation for higher intelligence zombies
+                        if (zombieIntelligence >= 2) {
+                            zombie.getWorld().spawnParticle(
+                                Particle.VILLAGER_HAPPY, 
+                                zombie.getLocation().add(0, 1.5, 0),
+                                5, 0.2, 0.2, 0.2, 0.05
+                            );
+                        }
                     } else {
                         // If no chest, look for valuable blocks
                         Location newTarget = findValuableBlockLocation(zombie, raid);
@@ -118,21 +170,60 @@ public class SimpleAiManager {
                 if (targetLocation != null) {
                     if (zombie instanceof Mob) {
                         ((Mob) zombie).setTarget(null); // Always clear target
-                        Location finalTarget = targetLocation.clone();
+                        
+                        // Create initial target
+                        Location initialTarget = targetLocation.clone();
+                        
+                        // Check for players nearby - try to avoid them based on intelligence
+                        Player nearbyPlayer = findNearestPlayer(zombie, 5);
+                        if (nearbyPlayer != null && zombieIntelligence > 1) {
+                            // Try to path around player
+                            Vector avoidanceVector = zombie.getLocation().toVector()
+                                .subtract(nearbyPlayer.getLocation().toVector()).normalize().multiply(2);
+                            
+                            // Adjust path to include avoidance vector - create a new location rather than modifying
+                            initialTarget = initialTarget.clone().add(avoidanceVector);
+                        }
+                        
+                        // Create a final copy that won't be modified and can be used in the inner class
+                        final Location finalTarget = initialTarget;
+                        
+                        // Move toward target with intelligence-based pathfinding
+                        double moveSpeed = 0.25 + (0.05 * zombieIntelligence);
                         new BukkitRunnable() {
+                            private int moveCounter = 0;
+                            private final int maxMoves = 5 + zombieIntelligence;
+                            
                             @Override
                             public void run() {
-                                if (!zombie.isValid() || zombie.isDead()) {
+                                moveCounter++;
+                                
+                                if (!zombie.isValid() || zombie.isDead() || moveCounter > maxMoves) {
                                     this.cancel();
                                     return;
                                 }
                                 
-                                // Make zombie move faster toward target to make it more effective
-                                zombie.teleport(zombie.getLocation().add(
-                                    finalTarget.clone().subtract(zombie.getLocation()).toVector().normalize().multiply(0.35)
-                                ));
+                                // Smoother movement with some randomness for higher intelligence
+                                Vector moveDir = finalTarget.clone().subtract(zombie.getLocation()).toVector().normalize();
+                                
+                                // Add slight randomness for more natural movement
+                                if (zombieIntelligence >= 2 && Math.random() < 0.3) {
+                                    moveDir.add(new Vector(
+                                        (Math.random() - 0.5) * 0.2, 
+                                        0, 
+                                        (Math.random() - 0.5) * 0.2
+                                    )).normalize();
+                                }
+                                
+                                // Apply movement
+                                zombie.setVelocity(moveDir.multiply(moveSpeed));
+                                
+                                // Look toward target
+                                Location lookLocation = zombie.getLocation().clone();
+                                lookLocation.setDirection(moveDir);
+                                zombie.teleport(lookLocation, org.bukkit.event.player.PlayerTeleportEvent.TeleportCause.PLUGIN);
                             }
-                        }.runTaskTimer(plugin, 0L, 5L);
+                        }.runTaskTimer(plugin, 0L, 2L);
                         
                         // If close to target block, attempt to steal
                         if (zombie.getLocation().distanceSquared(targetLocation) <= 4.0) {
@@ -150,6 +241,35 @@ public class SimpleAiManager {
         
         aiTask.runTaskTimer(plugin, 5L, 20L);
         aiTasks.put(zombie.getUniqueId(), aiTask);
+    }
+
+    // Add this helper method to unstuck zombies
+    private void unstuckZombie(Zombie zombie) {
+        // Try jumping
+        zombie.setVelocity(new Vector(0, 0.4, 0));
+        
+        // Add some random movement
+        Vector randomMove = new Vector(
+            (Math.random() - 0.5) * 0.5,
+            0,
+            (Math.random() - 0.5) * 0.5
+        );
+        
+        // Schedule the random movement after jump
+        new BukkitRunnable() {
+            @Override
+            public void run() {
+                if (zombie.isValid() && !zombie.isDead()) {
+                    zombie.setVelocity(randomMove);
+                }
+            }
+        }.runTaskLater(plugin, 5L);
+    }
+
+    // Add this helper method to check if zombie is fleeing
+    private boolean isZombieFleeing(Zombie zombie) {
+        NamespacedKey fleeingKey = new NamespacedKey(plugin, "fleeing");
+        return zombie.getPersistentDataContainer().has(fleeingKey, PersistentDataType.BYTE);
     }
 
     // Add this helper method to find nearby chests

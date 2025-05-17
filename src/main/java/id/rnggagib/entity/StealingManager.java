@@ -27,6 +27,7 @@ import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
+import java.util.AbstractMap;
 
 // Add import for Town and TownBlock (and World if needed)
 import org.bukkit.World;
@@ -179,7 +180,18 @@ public class StealingManager {
 
     private void stealFromChest(Zombie zombie, Chest chest, ActiveRaid raid) {
         Set<Material> stealableItems = plugin.getConfigManager().getStealableItems();
-        int maxItemsPerCategory = plugin.getConfigManager().getMaxItemsPerCategory();
+        int initialMaxItemsPerCategory = plugin.getConfigManager().getMaxItemsPerCategory();
+        
+        // Get zombie intelligence level
+        int initialIntelligence = 1; // Default
+        NamespacedKey intelligenceKey = new NamespacedKey(plugin, "intelligence");
+        if (zombie.getPersistentDataContainer().has(intelligenceKey, PersistentDataType.INTEGER)) {
+            initialIntelligence = zombie.getPersistentDataContainer().get(intelligenceKey, PersistentDataType.INTEGER);
+        }
+        
+        // Create final copies that can be used in the inner class
+        final int intelligence = initialIntelligence;
+        final int maxItemsPerCategory = initialMaxItemsPerCategory + intelligence;
         
         // First, animate chest opening
         BlockData chestData = chest.getBlock().getBlockData();
@@ -187,6 +199,23 @@ public class StealingManager {
             // Play chest open sound
             chest.getWorld().playSound(chest.getLocation(), Sound.BLOCK_CHEST_OPEN, 0.5f, 1.0f);
         }
+        
+        // Animate zombie looking into chest
+        Location zombieLookAt = chest.getLocation().clone().add(0.5, 0.5, 0.5);
+        Location zombieLocation = zombie.getLocation().clone();
+        zombieLocation.setDirection(zombieLookAt.subtract(zombieLocation).toVector());
+        zombie.teleport(zombieLocation);
+        
+        // Make zombie "rummage" through chest
+        zombie.swingMainHand();
+        new BukkitRunnable() {
+            @Override
+            public void run() {
+                if (zombie.isValid() && !zombie.isDead()) {
+                    zombie.swingOffHand();
+                }
+            }
+        }.runTaskLater(plugin, 10L);
         
         // Schedule task to steal items one by one with delay
         new BukkitRunnable() {
@@ -197,29 +226,63 @@ public class StealingManager {
             public void run() {
                 // On first run, identify all items to steal
                 if (currentIndex == 0) {
-                    for (Material targetMaterial : stealableItems) {
-                        int itemsStolen = 0;
+                    // Smarter zombies prioritize more valuable items
+                    Map<Material, Integer> valueMap = new HashMap<>();
+                    for (Material mat : stealableItems) {
+                        // Assign value based on material
+                        int value = 1;
+                        if (mat.name().contains("DIAMOND")) value = 5;
+                        else if (mat.name().contains("NETHERITE")) value = 6;
+                        else if (mat.name().contains("EMERALD")) value = 4;
+                        else if (mat.name().contains("GOLD")) value = 3;
+                        else if (mat.name().contains("IRON")) value = 2;
                         
-                        for (int i = 0; i < chest.getInventory().getSize() && itemsStolen < maxItemsPerCategory; i++) {
-                            ItemStack item = chest.getInventory().getItem(i);
-                            if (item != null && item.getType() == targetMaterial) {
-                                int amountToSteal = Math.min(item.getAmount(), maxItemsPerCategory - itemsStolen);
-                                
-                                if (amountToSteal > 0) {
-                                    // Add to items to steal
-                                    ItemStack stealItem = item.clone();
-                                    stealItem.setAmount(amountToSteal);
-                                    itemsToSteal.add(stealItem);
-                                    
-                                    // Remove from original stack
-                                    item.setAmount(item.getAmount() - amountToSteal);
-                                    if (item.getAmount() <= 0) {
-                                        chest.getInventory().setItem(i, null);
-                                    }
-                                    
-                                    itemsStolen += amountToSteal;
-                                }
+                        valueMap.put(mat, value);
+                    }
+                    
+                    // Find all stealable items in chest
+                    List<Map.Entry<Integer, ItemStack>> potentialItems = new ArrayList<>();
+                    for (int i = 0; i < chest.getInventory().getSize(); i++) {
+                        ItemStack item = chest.getInventory().getItem(i);
+                        if (item != null && stealableItems.contains(item.getType())) {
+                            potentialItems.add(new AbstractMap.SimpleEntry<>(i, item));
+                        }
+                    }
+                    
+                    // Sort by value for intelligent zombies
+                    if (intelligence > 1) {
+                        potentialItems.sort((entry1, entry2) -> {
+                            int value1 = valueMap.getOrDefault(entry1.getValue().getType(), 1);
+                            int value2 = valueMap.getOrDefault(entry2.getValue().getType(), 1);
+                            return value2 - value1; // Higher value first
+                        });
+                    }
+                    
+                    // Process items by category (with limit)
+                    Map<Material, Integer> itemsStolen = new HashMap<>();
+                    for (Map.Entry<Integer, ItemStack> entry : potentialItems) {
+                        int slotIndex = entry.getKey();
+                        ItemStack item = entry.getValue();
+                        Material material = item.getType();
+                        
+                        int stolenSoFar = itemsStolen.getOrDefault(material, 0);
+                        if (stolenSoFar >= maxItemsPerCategory) continue;
+                        
+                        int amountToSteal = Math.min(item.getAmount(), maxItemsPerCategory - stolenSoFar);
+                        
+                        if (amountToSteal > 0) {
+                            // Add to items to steal
+                            ItemStack stealItem = item.clone();
+                            stealItem.setAmount(amountToSteal);
+                            itemsToSteal.add(stealItem);
+                            
+                            // Remove from original stack
+                            item.setAmount(item.getAmount() - amountToSteal);
+                            if (item.getAmount() <= 0) {
+                                chest.getInventory().setItem(slotIndex, null);
                             }
+                            
+                            itemsStolen.put(material, stolenSoFar + amountToSteal);
                         }
                     }
                 }
@@ -233,7 +296,7 @@ public class StealingManager {
                     chest.getWorld().spawnParticle(
                         Particle.ITEM_CRACK, 
                         effectLocation,
-                        10,  // amount
+                        15,  // more particles
                         0.3, 0.3, 0.3,  // offset
                         0.05,  // speed
                         currentItem  // data - shows particles of the actual item
@@ -242,7 +305,7 @@ public class StealingManager {
                     // Draw line of particles from chest to zombie
                     Vector direction = zombie.getLocation().add(0, 0.5, 0).subtract(effectLocation).toVector().normalize();
                     double distance = zombie.getLocation().distance(effectLocation);
-                    for (double d = 0.5; d < distance; d += 0.5) {
+                    for (double d = 0.5; d < distance; d += 0.3) {
                         Location particleLocation = effectLocation.clone().add(direction.clone().multiply(d));
                         chest.getWorld().spawnParticle(
                             Particle.ITEM_CRACK, 
@@ -255,7 +318,15 @@ public class StealingManager {
                     }
                     
                     // Play stealing sound
-                    chest.getWorld().playSound(effectLocation, Sound.ENTITY_ITEM_PICKUP, 0.5f, 1.0f);
+                    float pitch = 1.0f + (currentIndex * 0.1f); // Vary pitch for each item
+                    chest.getWorld().playSound(effectLocation, Sound.ENTITY_ITEM_PICKUP, 0.7f, pitch);
+                    
+                    // Show happy particles from zombie
+                    zombie.getWorld().spawnParticle(
+                        Particle.VILLAGER_HAPPY,
+                        zombie.getLocation().add(0, 1.0, 0),
+                        5, 0.3, 0.3, 0.3, 0.05
+                    );
                     
                     // Update raid counter
                     raid.incrementStolenItems(1);
@@ -288,7 +359,29 @@ public class StealingManager {
                         // Log information
                         plugin.getLogger().info("Raider zombie stole " + itemsToSteal.size() + " items from chest during raid " + raid.getId());
                         
-                        // Make zombie flee after successful stealing
+                        // Make zombie flee with special animation based on intelligence
+                        zombie.swingMainHand();
+                        zombie.getWorld().spawnParticle(
+                            Particle.CLOUD,
+                            zombie.getLocation(),
+                            10, 0.3, 0.5, 0.3, 0.05
+                        );
+                        
+                        // Make zombie laugh by name-tagging temporarily
+                        String originalName = zombie.getCustomName();
+                        String laughEmote = intelligence > 2 ? "<dark_red>Hehehehe!" : "<dark_red>Hehe!";
+                        
+                        zombie.setCustomName(laughEmote);
+                        new BukkitRunnable() {
+                            @Override
+                            public void run() {
+                                if (zombie.isValid() && !zombie.isDead()) {
+                                    zombie.setCustomName(originalName);
+                                }
+                            }
+                        }.runTaskLater(plugin, 30L);
+                        
+                        // Make zombie flee after stealing
                         initiateZombieEscape(zombie, raid);
                         
                         // Cancel this task
@@ -298,7 +391,7 @@ public class StealingManager {
                     this.cancel();
                 }
             }
-        }.runTaskTimer(plugin, 0L, 10L); // Run every half second (10 ticks)
+        }.runTaskTimer(plugin, 0L, 8L); // Run slightly faster
     }
 
     private Entity findEntityByUuid(UUID entityId) {
