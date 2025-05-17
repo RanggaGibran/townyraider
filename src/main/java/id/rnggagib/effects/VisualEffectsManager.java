@@ -128,11 +128,20 @@ public class VisualEffectsManager {
         
         bossBar.setProgress(progress);
         
-        String title = plugin.getConfigManager().getMessage("raid-bossbar-title")
+        // Build the title with proper formatting
+        String rawTitle = plugin.getConfigManager().getMessage("raid-bossbar-title")
                 .replace("{town}", raid.getTownName()) + 
                 " - " + raid.getStolenItems() + " items stolen";
         
-        bossBar.setTitle(title);
+        // Format using Adventure API and then convert to legacy format for BossBar
+        Component formattedTitle = plugin.getMessageManager().format(rawTitle);
+        String legacyTitle = net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer.builder()
+            .character('§') // Use section symbol for color codes
+            .hexColors()
+            .build()
+            .serialize(formattedTitle);
+        
+        bossBar.setTitle(legacyTitle);
     }
     
     /**
