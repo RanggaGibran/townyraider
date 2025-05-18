@@ -9,6 +9,7 @@ import org.bukkit.NamespacedKey;
 import org.bukkit.World;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.configuration.MemoryConfiguration;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.LivingEntity;
@@ -186,6 +187,126 @@ public class RaiderEntityManager {
                 verifyRaidMobsExist(raid);
             }
         }.runTaskLater(plugin, 20L); // Check after 1 second
+    }
+
+    /**
+     * Spawn raid mobs with scaling based on raid difficulty
+     * Uses difficulty values stored in the raid metadata
+     */
+    public void spawnScaledRaidMobs(ActiveRaid raid, Location location) {
+        if (location == null || location.getWorld() == null) {
+            plugin.getLogger().warning("Cannot spawn scaled raid mobs: Invalid location");
+            return;
+        }
+        
+        // Force load a larger chunk area to ensure all mobs spawn
+        int chunkRadius = 2; // Load a 5x5 chunk area
+        preloadChunksAroundLocation(location, chunkRadius);
+        
+        // Make sure location is safe for spawning
+        Location spawnLocation = findSafeSpawnLocation(location);
+        if (spawnLocation == null) {
+            plugin.getLogger().warning("Cannot find safe spawn location for raid " + raid.getId());
+            return;
+        }
+        
+        // Get the difficulty-scaled values from the raid metadata
+        int zombieCount = (int) raid.getMetadata("zombie_count");
+        double zombieHealth = (double) raid.getMetadata("zombie_health");
+        double zombieSpeed = (double) raid.getMetadata("zombie_speed");
+        double zombieDamage = (double) raid.getMetadata("zombie_damage");
+        
+        int skeletonCount = (int) raid.getMetadata("skeleton_count");
+        double skeletonHealth = (double) raid.getMetadata("skeleton_health");
+        double skeletonSpeed = (double) raid.getMetadata("skeleton_speed");
+        double skeletonDamage = (double) raid.getMetadata("skeleton_damage");
+        
+        // Create zombie configuration
+        MemoryConfiguration zombieConfig = new MemoryConfiguration();
+        zombieConfig.set("count", zombieCount);
+        zombieConfig.set("health", zombieHealth);
+        zombieConfig.set("speed", zombieSpeed);
+        zombieConfig.set("damage", zombieDamage);
+        
+        // Create skeleton configuration
+        MemoryConfiguration skeletonConfig = new MemoryConfiguration();
+        skeletonConfig.set("count", skeletonCount);
+        skeletonConfig.set("health", skeletonHealth);
+        skeletonConfig.set("speed", skeletonSpeed);
+        skeletonConfig.set("damage", skeletonDamage);
+        
+        List<LivingEntity> raiders = new ArrayList<>();
+        
+        // Add visual indicator when spawning
+        spawnLocation.getWorld().spawnParticle(Particle.EXPLOSION_LARGE, spawnLocation, 3, 0.5, 0.5, 0.5, 0.01);
+        spawnLocation.getWorld().playSound(spawnLocation, Sound.ENTITY_ENDER_DRAGON_GROWL, 1.0f, 1.5f);
+        
+        // Spawn zombies with the scaled config
+        for (int i = 0; i < zombieCount; i++) {
+            Location zombieLocation = getRandomNearbyLocation(spawnLocation, 3);
+            zombieLocation.getChunk().load(true);
+            zombieLocation = ensureSafeSpawnLocation(zombieLocation);
+            
+            Zombie zombie = spawnRaiderZombie(raid, zombieLocation, zombieConfig);
+            if (zombie != null) {
+                raiders.add(zombie);
+                raid.addRaiderEntity(zombie.getUniqueId());
+                
+                // Apply scaled attributes directly
+                if (zombie.getAttribute(Attribute.GENERIC_MAX_HEALTH) != null) {
+                    zombie.getAttribute(Attribute.GENERIC_MAX_HEALTH).setBaseValue(zombieHealth);
+                    zombie.setHealth(zombieHealth);
+                }
+                
+                if (zombie.getAttribute(Attribute.GENERIC_MOVEMENT_SPEED) != null) {
+                    zombie.getAttribute(Attribute.GENERIC_MOVEMENT_SPEED).setBaseValue(zombieSpeed);
+                }
+                
+                if (zombie.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE) != null) {
+                    zombie.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE).setBaseValue(zombieDamage);
+                }
+                
+                // Spawn skeletons for each zombie
+                for (int j = 0; j < skeletonCount / zombieCount; j++) {
+                    Location skeletonLocation = getRandomNearbyLocation(zombieLocation, 3);
+                    skeletonLocation.getChunk().load(true);
+                    skeletonLocation = ensureSafeSpawnLocation(skeletonLocation);
+                    
+                    Skeleton skeleton = spawnGuardianSkeleton(raid, skeletonLocation, skeletonConfig, zombie);
+                    if (skeleton != null) {
+                        raiders.add(skeleton);
+                        raid.addRaiderEntity(skeleton.getUniqueId());
+                        
+                        // Apply scaled attributes directly
+                        if (skeleton.getAttribute(Attribute.GENERIC_MAX_HEALTH) != null) {
+                            skeleton.getAttribute(Attribute.GENERIC_MAX_HEALTH).setBaseValue(skeletonHealth);
+                            skeleton.setHealth(skeletonHealth);
+                        }
+                        
+                        if (skeleton.getAttribute(Attribute.GENERIC_MOVEMENT_SPEED) != null) {
+                            skeleton.getAttribute(Attribute.GENERIC_MOVEMENT_SPEED).setBaseValue(skeletonSpeed);
+                        }
+                        
+                        if (skeleton.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE) != null) {
+                            skeleton.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE).setBaseValue(skeletonDamage);
+                        }
+                    }
+                }
+            }
+        }
+        
+        plugin.getLogger().info("Spawned " + raiders.size() + " scaled raid mobs for raid " + raid.getId());
+        
+        // Start the raid officially
+        raid.startRaid();
+        
+        // Schedule verification check
+        new BukkitRunnable() {
+            @Override
+            public void run() {
+                verifyRaidMobsExist(raid);
+            }
+        }.runTaskLater(plugin, 20L);
     }
 
     /**
