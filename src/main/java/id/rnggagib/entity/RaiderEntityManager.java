@@ -24,6 +24,7 @@ import org.bukkit.Material;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
 import org.bukkit.Particle;
+import org.bukkit.Sound;
 import net.kyori.adventure.text.Component;
 
 import java.util.ArrayList;
@@ -32,6 +33,8 @@ import java.util.Random;
 import java.util.UUID;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
+import java.util.HashSet;
 
 public class RaiderEntityManager {
     private final TownyRaider plugin;
@@ -55,17 +58,25 @@ public class RaiderEntityManager {
         this.aiManager = new SimpleAiManager(plugin); // To handle AI behavior
     }
 
+    /**
+     * Enhanced raid mob spawning with improved reliability
+     */
     public void spawnRaidMobs(ActiveRaid raid, Location location) {
         if (location == null || location.getWorld() == null) {
             plugin.getLogger().warning("Cannot spawn raid mobs: Invalid location");
             return;
         }
         
-        // Force load chunk before spawning
-        location.getChunk().load(true);
+        // Force load a larger chunk area to ensure all mobs spawn
+        int chunkRadius = 2; // Load a 5x5 chunk area
+        preloadChunksAroundLocation(location, chunkRadius);
         
-        // Make sure location is on a solid block with air above
-        location = ensureSafeSpawnLocation(location);
+        // Make sure location is safe for spawning
+        Location spawnLocation = findSafeSpawnLocation(location);
+        if (spawnLocation == null) {
+            plugin.getLogger().warning("Cannot find safe spawn location for raid " + raid.getId());
+            return;
+        }
         
         ConfigurationSection zombieConfig = plugin.getConfigManager().getMobConfig("baby-zombie");
         ConfigurationSection skeletonConfig = plugin.getConfigManager().getMobConfig("skeleton");
@@ -76,122 +87,272 @@ public class RaiderEntityManager {
         List<LivingEntity> raiders = new ArrayList<>();
         
         // Add visual indicator when spawning
-        location.getWorld().spawnParticle(Particle.EXPLOSION_LARGE, location, 1);
+        spawnLocation.getWorld().spawnParticle(Particle.EXPLOSION_LARGE, spawnLocation, 3, 0.5, 0.5, 0.5, 0.01);
+        spawnLocation.getWorld().playSound(spawnLocation, Sound.ENTITY_ENDER_DRAGON_GROWL, 1.0f, 1.5f);
         
+        // Spawn mobs with retry mechanism
         for (int i = 0; i < zombieCount; i++) {
-            // Spread out spawn locations
-            Location zombieLocation = getRandomNearbyLocation(location, 3);
+            Location zombieLocation = getRandomNearbyLocation(spawnLocation, 3);
+            
+            // Ensure this location's chunk is loaded
             zombieLocation.getChunk().load(true);
             
-            Zombie zombie = spawnRaiderZombie(raid, zombieLocation, zombieConfig);
+            // Verify location is safe
+            zombieLocation = ensureSafeSpawnLocation(zombieLocation);
+            
+            // Try to spawn up to 3 times
+            Zombie zombie = null;
+            for (int attempt = 0; attempt < 3 && zombie == null; attempt++) {
+                zombie = spawnRaiderZombie(raid, zombieLocation, zombieConfig);
+                if (zombie == null && attempt < 2) {
+                    // Try a different location
+                    zombieLocation = getRandomNearbyLocation(spawnLocation, 5);
+                    zombieLocation.getChunk().load(true);
+                    zombieLocation = ensureSafeSpawnLocation(zombieLocation);
+                }
+            }
+            
             if (zombie != null) {
                 raiders.add(zombie);
                 raid.addRaiderEntity(zombie.getUniqueId());
                 
-                // Add visual effect to verify spawn
-                zombieLocation.getWorld().spawnParticle(Particle.SMOKE_LARGE, zombieLocation, 10, 0.5, 1, 0.5, 0.01);
+                // Make entity persistent to prevent despawning
+                zombie.setPersistent(true);
+                zombie.setRemoveWhenFarAway(false);
+                
+                // Add metadata to track raid
+                zombie.getPersistentDataContainer().set(
+                    new NamespacedKey(plugin, "raid_id"), 
+                    PersistentDataType.STRING, 
+                    raid.getId().toString()
+                );
+                
+                // Add visual confirmation
+                zombieLocation.getWorld().spawnParticle(Particle.PORTAL, zombieLocation.add(0, 1, 0), 30, 0.5, 1, 0.5, 0.01);
                 
                 // Log exact spawn location for debugging
-                plugin.getLogger().info("Spawned zombie at: " + zombieLocation.getX() + ", " 
-                    + zombieLocation.getY() + ", " + zombieLocation.getZ());
+                plugin.getLogger().info("Spawned zombie at: " + formatLocation(zombieLocation) + 
+                                       " for raid " + raid.getId());
                 
+                // Spawn skeletons
                 for (int j = 0; j < skeletonPerZombie; j++) {
-                    Location skeletonLocation = getRandomNearbyLocation(zombieLocation, 2);
+                    Location skeletonLocation = getRandomNearbyLocation(zombieLocation, 3);
                     skeletonLocation.getChunk().load(true);
-                    Skeleton skeleton = spawnGuardianSkeleton(raid, skeletonLocation, skeletonConfig, zombie);
+                    skeletonLocation = ensureSafeSpawnLocation(skeletonLocation);
+                    
+                    // Try to spawn with retry
+                    Skeleton skeleton = null;
+                    for (int attempt = 0; attempt < 3 && skeleton == null; attempt++) {
+                        skeleton = spawnGuardianSkeleton(raid, skeletonLocation, skeletonConfig, zombie);
+                        if (skeleton == null && attempt < 2) {
+                            skeletonLocation = getRandomNearbyLocation(zombieLocation, 4);
+                            skeletonLocation.getChunk().load(true);
+                            skeletonLocation = ensureSafeSpawnLocation(skeletonLocation);
+                        }
+                    }
+                    
                     if (skeleton != null) {
                         raiders.add(skeleton);
                         raid.addRaiderEntity(skeleton.getUniqueId());
                         
-                        // Add visual effect to verify spawn
-                        skeleton.getWorld().spawnParticle(Particle.SOUL, skeletonLocation, 10, 0.5, 1, 0.5, 0.01);
+                        // Make entity persistent
+                        skeleton.setPersistent(true);
+                        skeleton.setRemoveWhenFarAway(false);
+                        
+                        // Add metadata
+                        skeleton.getPersistentDataContainer().set(
+                            new NamespacedKey(plugin, "raid_id"), 
+                            PersistentDataType.STRING, 
+                            raid.getId().toString()
+                        );
+                        
+                        // Visual effects
+                        skeleton.getWorld().spawnParticle(Particle.SOUL, skeletonLocation.add(0, 1, 0), 20, 0.5, 1, 0.5, 0.01);
+                    } else {
+                        plugin.getLogger().warning("Failed to spawn skeleton after 3 attempts");
                     }
                 }
+            } else {
+                plugin.getLogger().warning("Failed to spawn zombie after 3 attempts");
             }
         }
         
         plugin.getLogger().info("Spawned " + raiders.size() + " raid mobs for raid " + raid.getId());
+        
+        // Schedule a verification check after a short delay
+        new BukkitRunnable() {
+            @Override
+            public void run() {
+                verifyRaidMobsExist(raid);
+            }
+        }.runTaskLater(plugin, 20L); // Check after 1 second
     }
 
     /**
-     * Ensures the spawn location is safe (solid block below, air above)
+     * Helper method to format a location for logging
      */
-    private Location ensureSafeSpawnLocation(Location location) {
+    private String formatLocation(Location loc) {
+        return String.format("(%.1f, %.1f, %.1f) in %s", 
+                            loc.getX(), loc.getY(), loc.getZ(), 
+                            loc.getWorld().getName());
+    }
+
+    /**
+     * Preload chunks around a central location
+     */
+    private void preloadChunksAroundLocation(Location center, int radius) {
+        World world = center.getWorld();
+        int centerX = center.getBlockX() >> 4;
+        int centerZ = center.getBlockZ() >> 4;
+        
+        // Load a square of chunks around the center
+        for (int x = centerX - radius; x <= centerX + radius; x++) {
+            for (int z = centerZ - radius; z <= centerZ + radius; z++) {
+                if (!world.isChunkLoaded(x, z)) {
+                    world.loadChunk(x, z, true);
+                }
+            }
+        }
+    }
+
+    /**
+     * Find a safe location for mob spawning
+     */
+    private Location findSafeSpawnLocation(Location location) {
+        if (location == null) return null;
+        
         World world = location.getWorld();
         
-        // Find the highest block at this X,Z
-        int y = world.getHighestBlockYAt(location);
-        Location safeLocation = new Location(world, location.getX(), y + 1, location.getZ());
+        // Start with the given location
+        if (isSafeForSpawning(location)) {
+            return location;
+        }
         
-        // Check if there's enough space for the mob
-        if (!safeLocation.getBlock().isEmpty() || 
-            !safeLocation.clone().add(0, 1, 0).getBlock().isEmpty()) {
-            
-            // Try to find a better location nearby
-            for (int xOffset = -3; xOffset <= 3; xOffset++) {
-                for (int zOffset = -3; zOffset <= 3; zOffset++) {
-                    Location checkLoc = new Location(world, 
-                        location.getX() + xOffset, 
-                        world.getHighestBlockYAt((int)location.getX() + xOffset, (int)location.getZ() + zOffset) + 1, 
-                        location.getZ() + zOffset);
-                    
-                    if (checkLoc.getBlock().isEmpty() && 
-                        checkLoc.clone().add(0, 1, 0).getBlock().isEmpty() &&
-                        !checkLoc.clone().subtract(0, 1, 0).getBlock().isEmpty()) {
-                        
-                        return checkLoc;
-                    }
+        // Try to find a safe location nearby
+        for (int radius = 1; radius < 10; radius++) {
+            for (int attempt = 0; attempt < 8; attempt++) {
+                double angle = Math.random() * 2 * Math.PI;
+                double x = location.getX() + radius * Math.cos(angle);
+                double z = location.getZ() + radius * Math.sin(angle);
+                
+                // Find the highest non-air block at this x,z
+                int y = world.getHighestBlockYAt((int)x, (int)z);
+                
+                Location testLocation = new Location(world, x, y + 1, z);
+                if (isSafeForSpawning(testLocation)) {
+                    return testLocation;
                 }
             }
         }
         
-        return safeLocation;
+        // As a last resort, try directly above the highest block
+        int y = world.getHighestBlockYAt(location.getBlockX(), location.getBlockZ());
+        Location highLocation = new Location(world, location.getX(), y + 1, location.getZ());
+        
+        return highLocation; // May still not be safe, but it's our best option
     }
 
     /**
-     * Spawns raid mobs with difficulty scaling applied
-     * @param raid The active raid
-     * @param location The spawn location
+     * Check if a location is safe for mob spawning
      */
-    public void spawnScaledRaidMobs(ActiveRaid raid, Location location) {
-        if (location == null || location.getWorld() == null) {
-            plugin.getLogger().warning("Cannot spawn raid mobs: Invalid location");
-            return;
+    private boolean isSafeForSpawning(Location location) {
+        World world = location.getWorld();
+        
+        // Need 2 blocks of air above the ground
+        Block groundBlock = world.getBlockAt(location.getBlockX(), location.getBlockY() - 1, location.getBlockZ());
+        Block feetBlock = world.getBlockAt(location);
+        Block headBlock = world.getBlockAt(location.getBlockX(), location.getBlockY() + 1, location.getBlockZ());
+        
+        // Ground should be solid
+        if (!groundBlock.getType().isSolid()) {
+            return false;
         }
         
-        ConfigurationSection zombieConfig = plugin.getConfigManager().getMobConfig("baby-zombie");
-        ConfigurationSection skeletonConfig = plugin.getConfigManager().getMobConfig("skeleton");
+        // Space for mob should be air
+        if (!feetBlock.getType().isAir() || !headBlock.getType().isAir()) {
+            return false;
+        }
         
-        // Get scaled values from raid metadata
-        int zombieCount = raid.hasMetadata("zombie_count") ? 
-                         ((Number)raid.getMetadata("zombie_count")).intValue() : 
-                         zombieConfig.getInt("count", 2);
+        // Avoid dangerous blocks
+        if (groundBlock.getType() == Material.LAVA || 
+            groundBlock.getType() == Material.CACTUS || 
+            groundBlock.getType() == Material.CAMPFIRE ||
+            groundBlock.getType() == Material.MAGMA_BLOCK) {
+            return false;
+        }
         
-        int skeletonPerZombie = raid.hasMetadata("skeleton_count") ? 
-                               ((Number)raid.getMetadata("skeleton_count")).intValue() : 
-                               skeletonConfig.getInt("count-per-zombie", 2);
+        return true;
+    }
+
+    /**
+     * Ensure a location is safe by adjusting the Y coordinate if needed
+     */
+    private Location ensureSafeSpawnLocation(Location location) {
+        if (location == null) return null;
         
-        List<LivingEntity> raiders = new ArrayList<>();
+        // If already safe, return as is
+        if (isSafeForSpawning(location)) {
+            return location;
+        }
         
-        for (int i = 0; i < zombieCount; i++) {
-            Zombie zombie = spawnScaledRaiderZombie(raid, location, zombieConfig);
-            if (zombie != null) {
-                raiders.add(zombie);
-                raid.addRaiderEntity(zombie.getUniqueId());
-                
-                for (int j = 0; j < skeletonPerZombie; j++) {
-                    Location skeletonLocation = getRandomNearbyLocation(location, 3);
-                    Skeleton skeleton = spawnScaledGuardianSkeleton(raid, skeletonLocation, skeletonConfig, zombie);
-                    if (skeleton != null) {
-                        raiders.add(skeleton);
-                        raid.addRaiderEntity(skeleton.getUniqueId());
-                    }
-                }
+        // Try to find a safe Y at this X,Z
+        World world = location.getWorld();
+        int x = location.getBlockX();
+        int z = location.getBlockZ();
+        
+        // Start from the highest block and check downward
+        int topY = world.getHighestBlockYAt(x, z);
+        for (int y = topY; y > 0; y--) {
+            Location testLoc = new Location(world, x + 0.5, y + 1, z + 0.5);
+            if (isSafeForSpawning(testLoc)) {
+                return testLoc;
             }
         }
         
-        plugin.getLogger().info("Spawned " + raiders.size() + " raid mobs for raid " + raid.getId() + 
-                               " with difficulty score " + raid.getMetadata("difficulty_score"));
+        // If no safe location was found, return original but raised slightly
+        return location.clone().add(0, 2, 0);
+    }
+
+    /**
+     * Verify that raid mobs actually exist in the world
+     */
+    private void verifyRaidMobsExist(ActiveRaid raid) {
+        int found = 0;
+        int missing = 0;
+        
+        List<UUID> entityIds = new ArrayList<>(raid.getRaiderEntities());
+        
+        for (UUID entityId : entityIds) {
+            boolean entityExists = false;
+            
+            // Check across all loaded worlds
+            for (World world : plugin.getServer().getWorlds()) {
+                for (LivingEntity entity : world.getLivingEntities()) {
+                    if (entity.getUniqueId().equals(entityId)) {
+                        entityExists = true;
+                        found++;
+                        break;
+                    }
+                }
+                if (entityExists) break;
+            }
+            
+            if (!entityExists) {
+                missing++;
+                // Entity missing, remove from raid
+                raid.removeRaiderEntity(entityId);
+            }
+        }
+        
+        plugin.getLogger().info("Raid " + raid.getId() + " verification: Found " + found + 
+                               " mobs, missing " + missing + " mobs");
+        
+        // If too many mobs are missing, try to respawn some
+        if (missing > 0 && found < 3) {
+            plugin.getLogger().warning("Too many mobs missing from raid " + raid.getId() + 
+                                     ", attempting to respawn");
+            spawnRaidMobs(raid, raid.getLocation());
+        }
     }
 
     private Zombie spawnRaiderZombie(ActiveRaid raid, Location location, ConfigurationSection config) {
@@ -295,42 +456,6 @@ public class RaiderEntityManager {
         return zombie;
     }
 
-    private Zombie spawnScaledRaiderZombie(ActiveRaid raid, Location location, ConfigurationSection config) {
-        World world = location.getWorld();
-        
-        Zombie zombie = (Zombie) world.spawnEntity(location, EntityType.ZOMBIE);
-        
-        // Always ensure it's a baby zombie
-        zombie.setBaby(true);
-        String mobName = config.getString("name", "Towny Plunderer");
-        // Parse the name through MiniMessage
-        Component parsedName = plugin.getMessageManager().format(mobName);
-        // Set the custom name using compatible method
-        String legacyName = plugin.getMessageManager().toLegacy(parsedName);
-        zombie.setCustomName(legacyName);
-        zombie.setCustomNameVisible(true);
-        
-        // Enhanced health and abilities with scaling
-        if (zombie.getAttribute(Attribute.GENERIC_MAX_HEALTH) != null) {
-            double health = raid.hasMetadata("zombie_health") ? 
-                          ((Number)raid.getMetadata("zombie_health")).doubleValue() : 
-                          config.getDouble("health", 15.0);
-            zombie.getAttribute(Attribute.GENERIC_MAX_HEALTH).setBaseValue(health);
-            zombie.setHealth(health);
-        }
-        
-        if (zombie.getAttribute(Attribute.GENERIC_MOVEMENT_SPEED) != null) {
-            double speed = raid.hasMetadata("zombie_speed") ? 
-                          ((Number)raid.getMetadata("zombie_speed")).doubleValue() : 
-                          config.getDouble("speed", 0.35);
-            zombie.getAttribute(Attribute.GENERIC_MOVEMENT_SPEED).setBaseValue(speed);
-        }
-        
-        // Rest of the method remains the same...
-        
-        return zombie;
-    }
-
     private Skeleton spawnGuardianSkeleton(ActiveRaid raid, Location location, ConfigurationSection config, Zombie protectTarget) {
         World world = location.getWorld();
         
@@ -409,36 +534,6 @@ public class RaiderEntityManager {
         if (protectTarget != null) {
             aiManager.applySkeletonAI(skeleton, raid, protectTarget.getUniqueId());
         }
-        
-        return skeleton;
-    }
-
-    private Skeleton spawnScaledGuardianSkeleton(ActiveRaid raid, Location location, ConfigurationSection config, Zombie protectTarget) {
-        World world = location.getWorld();
-        
-        Skeleton skeleton = (Skeleton) world.spawnEntity(location, EntityType.SKELETON);
-        
-        // Determine guardian rank based on configurable weights and randomization
-        String rank = determineGuardianRank(config);
-        
-        // Store the rank in skeleton's metadata
-        skeleton.getPersistentDataContainer().set(
-            new NamespacedKey(plugin, "guardian_rank"),
-            PersistentDataType.STRING,
-            rank
-        );
-        
-        // Format name based on rank
-        String mobName = formatGuardianNameByRank(config, rank);
-        Component parsedName = plugin.getMessageManager().format(mobName);
-        String legacyName = plugin.getMessageManager().toLegacy(parsedName);
-        skeleton.setCustomName(legacyName);
-        skeleton.setCustomNameVisible(true);
-        
-        // Apply scaled rank stats
-        applyScaledRankStats(skeleton, config, rank, raid);
-        
-        // Rest of the method remains the same...
         
         return skeleton;
     }
@@ -553,47 +648,6 @@ public class RaiderEntityManager {
         if (particleType != null) {
             applyRankParticleEffect(skeleton, particleType);
         }
-    }
-
-    private void applyScaledRankStats(Skeleton skeleton, ConfigurationSection config, String rank, ActiveRaid raid) {
-        ConfigurationSection rankSection = config.getConfigurationSection("ranks." + rank);
-        
-        if (rankSection == null) {
-            return;
-        }
-        
-        // Apply scaled health
-        double healthMultiplier = rankSection.getDouble("health_multiplier", 1.0);
-        if (skeleton.getAttribute(Attribute.GENERIC_MAX_HEALTH) != null) {
-            double baseHealth = raid.hasMetadata("skeleton_health") ? 
-                              ((Number)raid.getMetadata("skeleton_health")).doubleValue() : 
-                              config.getDouble("health", 30.0);
-            double finalHealth = baseHealth * healthMultiplier;
-            skeleton.getAttribute(Attribute.GENERIC_MAX_HEALTH).setBaseValue(finalHealth);
-            skeleton.setHealth(finalHealth);
-        }
-        
-        // Apply scaled speed
-        double speedMultiplier = rankSection.getDouble("speed_multiplier", 1.0);
-        if (skeleton.getAttribute(Attribute.GENERIC_MOVEMENT_SPEED) != null) {
-            double baseSpeed = raid.hasMetadata("skeleton_speed") ? 
-                             ((Number)raid.getMetadata("skeleton_speed")).doubleValue() : 
-                             config.getDouble("speed", 0.25);
-            skeleton.getAttribute(Attribute.GENERIC_MOVEMENT_SPEED)
-                .setBaseValue(baseSpeed * speedMultiplier);
-        }
-        
-        // Apply scaled damage
-        double damageMultiplier = rankSection.getDouble("damage_multiplier", 1.0);
-        if (skeleton.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE) != null) {
-            double baseDamage = raid.hasMetadata("skeleton_damage") ? 
-                              ((Number)raid.getMetadata("skeleton_damage")).doubleValue() : 
-                              config.getDouble("damage", 3.0);
-            skeleton.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE)
-                .setBaseValue(baseDamage * damageMultiplier);
-        }
-        
-        // Rest of the method remains the same...
     }
 
     private void applyRankParticleEffect(Skeleton skeleton, String particleType) {
@@ -740,14 +794,20 @@ public class RaiderEntityManager {
         return new Location(world, center.getX(), center.getY() + 3, center.getZ());
     }
 
-    // Enhance chunk loading for raids
+    /**
+     * Enhanced chunk loading management for raids
+     */
     public void keepRaidChunksLoaded(ActiveRaid raid) {
         Location raidLocation = raid.getLocation();
         if (raidLocation == null) return;
         
         World world = raidLocation.getWorld();
-        int centerX = raidLocation.getBlockX() >> 4; // Convert to chunk X
-        int centerZ = raidLocation.getBlockZ() >> 4; // Convert to chunk Z
+        int centerX = raidLocation.getBlockX() >> 4;
+        int centerZ = raidLocation.getBlockZ() >> 4;
+        
+        // Store the chunks that we're force-loading so we can unload them later
+        Set<ChunkCoord> forcedChunks = new HashSet<>();
+        raid.setMetadata("forced_chunks", forcedChunks);
         
         // Load a 5x5 chunk area around the raid center
         for (int x = centerX - 2; x <= centerX + 2; x++) {
@@ -756,13 +816,14 @@ public class RaiderEntityManager {
                     world.loadChunk(x, z, true);
                 }
                 world.setChunkForceLoaded(x, z, true);
+                forcedChunks.add(new ChunkCoord(world.getName(), x, z));
                 
                 // Debug message
                 plugin.getLogger().info("Forced chunk loaded at " + x + ", " + z);
             }
         }
         
-        // Schedule a task to verify chunks remain loaded
+        // Schedule a task to verify chunks remain loaded and mobs exist
         new BukkitRunnable() {
             @Override
             public void run() {
@@ -773,54 +834,55 @@ public class RaiderEntityManager {
                 }
                 
                 // Verify chunks are still loaded
-                for (int x = centerX - 2; x <= centerX + 2; x++) {
-                    for (int z = centerZ - 2; z <= centerZ + 2; z++) {
-                        if (!world.isChunkLoaded(x, z)) {
-                            world.loadChunk(x, z, true);
-                            world.setChunkForceLoaded(x, z, true);
-                            plugin.getLogger().warning("Had to reload chunk at " + x + ", " + z);
+                Set<ChunkCoord> chunks = (Set<ChunkCoord>) raid.getMetadata("forced_chunks");
+                if (chunks != null) {
+                    for (ChunkCoord coord : chunks) {
+                        World w = plugin.getServer().getWorld(coord.world);
+                        if (w != null && !w.isChunkLoaded(coord.x, coord.z)) {
+                            w.loadChunk(coord.x, coord.z, true);
+                            w.setChunkForceLoaded(coord.x, coord.z, true);
+                            plugin.getLogger().warning("Had to reload chunk at " + coord.x + ", " + coord.z);
                         }
                     }
                 }
                 
-                // Check if mob entities still exist and respawn if needed
-                verifyAndRespawnRaidMobs(raid);
-            }
-        }.runTaskTimer(plugin, 20L, 100L); // Check more frequently (every 5 seconds)
-    }
-
-    // Add this method to verify raid mobs exist and respawn them if needed
-    private void verifyAndRespawnRaidMobs(ActiveRaid raid) {
-        List<UUID> entitiesToRemove = new ArrayList<>();
-        List<UUID> currentEntities = new ArrayList<>(raid.getRaiderEntities());
-        
-        // Check which entities are missing
-        for (UUID entityId : currentEntities) {
-            boolean found = false;
-            for (World world : plugin.getServer().getWorlds()) {
-                for (Entity entity : world.getEntities()) {
-                    if (entity.getUniqueId().equals(entityId) && entity.isValid() && !entity.isDead()) {
-                        found = true;
-                        break;
-                    }
+                // Every 5 cycles, verify mob entities still exist
+                if (getRunCount() % 5 == 0) {
+                    verifyRaidMobsExist(raid);
                 }
-                if (found) break;
             }
             
-            if (!found) {
-                entitiesToRemove.add(entityId);
+            private int runCount = 0;
+            private int getRunCount() {
+                return runCount++;
             }
+        }.runTaskTimer(plugin, 20L, 100L); // Check every 5 seconds
+    }
+
+    /**
+     * Helper class for tracking chunks
+     */
+    private static class ChunkCoord {
+        final String world;
+        final int x;
+        final int z;
+        
+        ChunkCoord(String world, int x, int z) {
+            this.world = world;
+            this.x = x;
+            this.z = z;
         }
         
-        // Remove missing entities
-        for (UUID entityId : entitiesToRemove) {
-            raid.removeRaiderEntity(entityId);
+        @Override
+        public boolean equals(Object obj) {
+            if (!(obj instanceof ChunkCoord)) return false;
+            ChunkCoord other = (ChunkCoord) obj;
+            return world.equals(other.world) && x == other.x && z == other.z;
         }
         
-        // If too many entities are missing, respawn them
-        if (entitiesToRemove.size() > 0 && raid.getRaiderEntities().size() < 3) {
-            plugin.getLogger().info("Respawning raid mobs for raid " + raid.getId());
-            spawnRaidMobs(raid, raid.getLocation());
+        @Override
+        public int hashCode() {
+            return world.hashCode() ^ (x * 31) ^ (z * 17);
         }
     }
 

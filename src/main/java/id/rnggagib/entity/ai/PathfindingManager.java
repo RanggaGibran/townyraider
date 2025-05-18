@@ -13,6 +13,7 @@ import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Mob;
+import org.bukkit.entity.Player;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.util.Vector;
@@ -32,6 +33,7 @@ public class PathfindingManager {
     private final Set<Material> problematicBlocks;
     private final AStarPathfinder pathfinder;
     private final Map<UUID, WaypointPath> entityPaths = new HashMap<>();
+    private final Map<UUID, MovementState> entityMovementStates = new HashMap<>();
     
     // Pathfinding constants
     private static final int PATH_RECALCULATION_TICKS = 40; // Recalculate path every 2 seconds
@@ -614,6 +616,7 @@ public class PathfindingManager {
     public void removeEntity(Entity entity) {
         pathCache.remove(entity);
         entityPaths.remove(entity.getUniqueId());
+        entityMovementStates.remove(entity.getUniqueId());
     }
     
     /**
@@ -622,6 +625,7 @@ public class PathfindingManager {
     public void cleanup() {
         pathCache.clear();
         entityPaths.clear();
+        entityMovementStates.clear();
     }
     
     /**
@@ -641,19 +645,57 @@ public class PathfindingManager {
     }
     
     /**
-     * Add new method to follow a path
+     * Internal class to track entity movement state for smooth transitions
+     */
+    private static class MovementState {
+        Vector currentVelocity = null;
+        Location targetLocation = null;
+        double targetSpeed = 0.0;
+        long lastUpdateTime = 0;
+        boolean jumping = false;
+        int smoothTurningTicks = 0;
+        
+        // Cache for performance optimization
+        double cachedDistance = -1;
+        double cachedVelocityMag = 0;
+    }
+    
+    /**
+     * Add new method to follow a path with improved performance
      */
     private void followPath(Mob entity, WaypointPath path, double speed) {
         UUID entityId = entity.getUniqueId();
         
+        // Use longer timer intervals for distant entities
+        long updateInterval = entity.getWorld().getPlayers().stream()
+            .anyMatch(p -> p.getLocation().distance(entity.getLocation()) < 32) ? 2L : 10L;
+        
         new BukkitRunnable() {
+            private int consecutiveSkippedUpdates = 0;
+            
             @Override
             public void run() {
-                // Check if entity is still valid
+                // Cancel if entity is invalid
                 if (!entity.isValid() || entity.isDead() || path.isCompleted()) {
                     this.cancel();
                     entityPaths.remove(entityId);
+                    entityMovementStates.remove(entityId); // Clean up movement state
                     return;
+                }
+                
+                // Performance - Skip update if no players nearby and not primary entity
+                if (!isEntityImportant(entity)) {
+                    Player nearestPlayer = getNearestPlayer(entity);
+                    if (nearestPlayer == null || nearestPlayer.getLocation().distanceSquared(entity.getLocation()) > 1024) { // 32 blocks squared
+                        consecutiveSkippedUpdates++;
+                        
+                        // If we've skipped too many updates, slow down even more
+                        if (consecutiveSkippedUpdates > 5) {
+                            return; // Skip this update
+                        }
+                    } else {
+                        consecutiveSkippedUpdates = 0;
+                    }
                 }
                 
                 // Update path progress based on current location
@@ -665,6 +707,7 @@ public class PathfindingManager {
                     // End of path reached
                     this.cancel();
                     entityPaths.remove(entityId);
+                    entityMovementStates.remove(entityId);
                     return;
                 }
                 
@@ -676,38 +719,181 @@ public class PathfindingManager {
                 // Move toward the current waypoint
                 moveTowardWaypoint(entity, currentWaypoint, speed);
             }
-        }.runTaskTimer(plugin, 5L, 5L);
+        }.runTaskTimer(plugin, 1L, updateInterval);
     }
     
     /**
-     * Add method to move toward a specific waypoint
+     * Check if an entity is important enough for frequent updates
+     */
+    private boolean isEntityImportant(Mob entity) {
+        // Leaders and special entities should update more frequently
+        return entity.getPersistentDataContainer().has(
+            new NamespacedKey(plugin, "leader"), 
+            PersistentDataType.BYTE
+        ) || entity.getPersistentDataContainer().has(
+            new NamespacedKey(plugin, "important"),
+            PersistentDataType.BYTE
+        );
+    }
+    
+    /**
+     * Find the nearest player to an entity
+     */
+    private Player getNearestPlayer(Entity entity) {
+        Player nearest = null;
+        double nearestDistSquared = Double.MAX_VALUE;
+        
+        for (Player player : entity.getWorld().getPlayers()) {
+            double distSquared = player.getLocation().distanceSquared(entity.getLocation());
+            if (distSquared < nearestDistSquared) {
+                nearest = player;
+                nearestDistSquared = distSquared;
+            }
+        }
+        
+        return nearest;
+    }
+    
+    /**
+     * Optimized moveTowardWaypoint method with performance improvements
      */
     private void moveTowardWaypoint(Mob entity, Waypoint waypoint, double speed) {
+        UUID entityId = entity.getUniqueId();
         Location waypointLoc = waypoint.getLocation();
         
-        // Calculate movement vector
-        Vector direction = waypointLoc.clone().subtract(entity.getLocation()).toVector().normalize();
-        
-        // Calculate distance to waypoint - ADD THIS LINE
-        double distanceToWaypoint = entity.getLocation().distance(waypointLoc);
-        
-        // Adjust speed based on waypoint type
-        double adjustedSpeed = speed;
-        if (waypoint.getType() == Waypoint.WaypointType.CAREFUL) {
-            adjustedSpeed *= 0.5; // Slower for careful movement
+        // Get movement state with local variable to avoid multiple map lookups
+        MovementState state = entityMovementStates.get(entityId);
+        if (state == null) {
+            state = new MovementState();
+            entityMovementStates.put(entityId, state);
         }
         
-        // REDUCE VELOCITY MAGNITUDE - Lower these values to slow down movement
-        double velocityMagnitude = Math.min(adjustedSpeed * 0.25, distanceToWaypoint * 0.1);
+        // Update target location - only if changed significantly to reduce object creation
+        if (state.targetLocation == null || state.targetLocation.distanceSquared(waypointLoc) > 0.25) {
+            state.targetLocation = waypointLoc.clone();
+        }
+        state.targetSpeed = speed;
         
-        // Apply velocity with appropriate magnitude
-        entity.setVelocity(direction.multiply(velocityMagnitude));
+        // Calculate direction and distance
+        // Reuse vectors when possible to reduce object creation
+        Vector entityPos = entity.getLocation().toVector();
+        Vector targetPos = waypointLoc.toVector();
+        Vector direction = targetPos.clone().subtract(entityPos);
+        double distanceToWaypoint = direction.length();
         
-        // Special handling for jump waypoints
+        // Skip processing if too close to reduce CPU usage
+        if (distanceToWaypoint < 0.1) {
+            entity.setVelocity(new Vector(0, entity.getVelocity().getY(), 0));
+            return;
+        }
+        
+        // Normalize direction
+        direction.normalize();
+        
+        // Performance: Only update yaw when necessary
+        if (entity.getTicksLived() % 3 == 0) {
+            // Calculate yaw based on direction for smooth turning
+            float targetYaw = calculateYawFromVector(direction);
+            float currentYaw = entity.getLocation().getYaw();
+            
+            // Smooth turning
+            float yawDifference = normalizeAngle(targetYaw - currentYaw);
+            float maxTurnPerTick = 15.0f; // Slightly faster turning
+            
+            if (Math.abs(yawDifference) > maxTurnPerTick) {
+                // Gradually turn toward the target
+                float newYaw = currentYaw + Math.signum(yawDifference) * maxTurnPerTick;
+                Location turnLocation = entity.getLocation().clone();
+                turnLocation.setYaw(newYaw);
+                entity.teleport(turnLocation);
+                
+                // Reduce speed during sharp turns
+                if (Math.abs(yawDifference) > 60) {
+                    speed *= 0.6;
+                    state.smoothTurningTicks = 3; // Reduced tick count for performance
+                }
+            }
+        }
+        
+        // Calculate velocity with cached computation where possible
+        double velocityMagnitude;
+        if (state.cachedDistance > 0 && Math.abs(state.cachedDistance - distanceToWaypoint) < 0.5) {
+            // Reuse cached value if distance hasn't changed much
+            velocityMagnitude = state.cachedVelocityMag;
+        } else {
+            // Recalculate velocity magnitude
+            if (distanceToWaypoint < 2.0) {
+                velocityMagnitude = 0.1 * (distanceToWaypoint / 2.0); // Simpler calculation
+            } else if (distanceToWaypoint < 5.0) {
+                velocityMagnitude = 0.15;
+            } else {
+                velocityMagnitude = Math.min(0.2, speed * 0.25);
+            }
+            
+            // Cache the calculated values
+            state.cachedDistance = distanceToWaypoint;
+            state.cachedVelocityMag = velocityMagnitude;
+        }
+        
+        // Check if entity is turning sharply
+        if (state.smoothTurningTicks > 0) {
+            velocityMagnitude *= 0.7;
+            state.smoothTurningTicks--;
+        }
+        
+        // Handle Y movement with simplified logic
+        double yVelocity = entity.getVelocity().getY();
+        double yDiff = waypointLoc.getY() - entity.getLocation().getY();
+        
+        // Jumping logic
+        if (yDiff > 0.5 && entity.isOnGround() && !state.jumping) {
+            yVelocity = 0.25;
+            state.jumping = true;
+        } else if (entity.isOnGround()) {
+            state.jumping = false;
+        }
+        
+        // Apply velocity (more efficient application)
+        Vector velocity = direction.multiply(velocityMagnitude).setY(yVelocity);
+        entity.setVelocity(velocity);
+        
+        // Store current velocity with minimal object creation
+        if (state.currentVelocity == null) {
+            state.currentVelocity = velocity.clone();
+        } else {
+            state.currentVelocity.copy(velocity);
+        }
+        
+        // Special handling for jump waypoints with reduced frequency
         if (waypoint.getType() == Waypoint.WaypointType.JUMP && 
-            entity.getLocation().distance(waypointLoc) < 2.0) {
-            entity.setVelocity(entity.getVelocity().setY(0.3)); // Reduced from 0.4
+            entity.getLocation().distance(waypointLoc) < 2.0 && 
+            entity.isOnGround() && entity.getTicksLived() % 5 == 0) {
+            entity.setVelocity(entity.getVelocity().clone().setY(0.25));
         }
+    }
+    
+    /**
+     * Calculate yaw angle from a direction vector
+     */
+    private float calculateYawFromVector(Vector vector) {
+        // Convert vector to yaw (rotation around Y axis)
+        double dx = vector.getX();
+        double dz = vector.getZ();
+        double yaw = Math.atan2(-dx, dz) * (180 / Math.PI);
+        return (float) yaw;
+    }
+    
+    /**
+     * Normalize angle to be between -180 and 180
+     */
+    private float normalizeAngle(float angle) {
+        angle %= 360.0f;
+        if (angle > 180.0f) {
+            angle -= 360.0f;
+        } else if (angle < -180.0f) {
+            angle += 360.0f;
+        }
+        return angle;
     }
     
     /**
@@ -742,5 +928,73 @@ public class PathfindingManager {
             default:
                 break;
         }
+    }
+    
+    /**
+     * Enhance chunk loading for raids with performance improvements
+     */
+    public void keepRaidChunksLoaded(ActiveRaid raid) {
+        Location raidLocation = raid.getLocation();
+        if (raidLocation == null) return;
+        
+        World world = raidLocation.getWorld();
+        int centerX = raidLocation.getBlockX() >> 4;
+        int centerZ = raidLocation.getBlockZ() >> 4;
+        
+        // Use a smaller chunk area (3x3 instead of 5x5)
+        for (int x = centerX - 1; x <= centerX + 1; x++) {
+            for (int z = centerZ - 1; z <= centerZ + 1; z++) {
+                if (!world.isChunkLoaded(x, z)) {
+                    world.loadChunk(x, z, true);
+                }
+                world.setChunkForceLoaded(x, z, true);
+            }
+        }
+        
+        // Use a more efficient timer for chunk verification
+        new BukkitRunnable() {
+            private int counter = 0;
+            
+            @Override
+            public void run() {
+                if (!plugin.getRaidManager().getActiveRaids().containsKey(raid.getId())) {
+                    this.cancel();
+                    PathfindingManager.this.unloadRaidChunks(raid); // Fixed reference to outer class method
+                    return;
+                }
+                
+                // Only verify chunks every 3rd run (15 seconds instead of 5)
+                counter++;
+                if (counter % 3 == 0) {
+                    // Only check the most critical chunks
+                    if (!world.isChunkLoaded(centerX, centerZ)) {
+                        world.loadChunk(centerX, centerZ, true);
+                        world.setChunkForceLoaded(centerX, centerZ, true);
+                    }
+                }
+            }
+        }.runTaskTimer(plugin, 20L, 300L); // Check every 15 seconds instead of 5
+    }
+    
+    /**
+     * Unload raid chunks when a raid ends
+     */
+    public void unloadRaidChunks(ActiveRaid raid) {
+        Location raidLocation = raid.getLocation();
+        if (raidLocation == null) return;
+        
+        World world = raidLocation.getWorld();
+        int centerX = raidLocation.getBlockX() >> 4;
+        int centerZ = raidLocation.getBlockZ() >> 4;
+        
+        // Use the same chunk area as in keepRaidChunksLoaded (3x3)
+        for (int x = centerX - 1; x <= centerX + 1; x++) {
+            for (int z = centerZ - 1; z <= centerZ + 1; z++) {
+                world.setChunkForceLoaded(x, z, false);
+            }
+        }
+        
+        // Log that chunks were unloaded
+        plugin.getLogger().info("Unloaded chunks for ended raid " + raid.getId());
     }
 }
