@@ -27,6 +27,8 @@ import org.bukkit.potion.PotionEffectType;
 import org.bukkit.Particle;
 import org.bukkit.Sound;
 import net.kyori.adventure.text.Component;
+import org.bukkit.Bukkit;
+import org.bukkit.Chunk;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -68,15 +70,46 @@ public class RaiderEntityManager {
             return;
         }
         
+        // Check if we've exceeded respawn attempts
+        Integer respawnAttempts = (Integer) raid.getMetadata("respawn_attempts");
+        if (respawnAttempts != null && respawnAttempts >= 3) {
+            plugin.getLogger().warning("Raid " + raid.getId() + " has exceeded respawn attempt limit. Skipping spawn.");
+            return;
+        }
+        
         // Force load a larger chunk area to ensure all mobs spawn
         int chunkRadius = 2; // Load a 5x5 chunk area
         preloadChunksAroundLocation(location, chunkRadius);
+        
+        // Ensure the spawn chunk is in a valid location
+        Chunk chunk = location.getChunk();
+        if (!chunk.isLoaded()) {
+            chunk.load(true);
+            plugin.getLogger().info("Had to load chunk at " + chunk.getX() + ", " + chunk.getZ() + " for spawning");
+        }
         
         // Make sure location is safe for spawning
         Location spawnLocation = findSafeSpawnLocation(location);
         if (spawnLocation == null) {
             plugin.getLogger().warning("Cannot find safe spawn location for raid " + raid.getId());
             return;
+        }
+        
+        // Check if the location is in the spawn protection area
+        if (isInSpawnProtection(spawnLocation)) {
+            plugin.getLogger().warning("Cannot spawn raid mobs in spawn protection area");
+            
+            // Try to find a new location outside spawn protection
+            for (int attempt = 0; attempt < 5; attempt++) {
+                Location newLoc = spawnLocation.clone().add((Math.random() * 40) - 20, 0, (Math.random() * 40) - 20);
+                newLoc.setY(newLoc.getWorld().getHighestBlockYAt(newLoc));
+                
+                if (!isInSpawnProtection(newLoc)) {
+                    spawnLocation = newLoc;
+                    plugin.getLogger().info("Found alternative spawn location outside spawn protection");
+                    break;
+                }
+            }
         }
         
         ConfigurationSection zombieConfig = plugin.getConfigManager().getMobConfig("baby-zombie");
@@ -180,13 +213,30 @@ public class RaiderEntityManager {
         
         plugin.getLogger().info("Spawned " + raiders.size() + " raid mobs for raid " + raid.getId());
         
-        // Schedule a verification check after a short delay
+        // Schedule a verification check after a longer delay
         new BukkitRunnable() {
             @Override
             public void run() {
                 verifyRaidMobsExist(raid);
             }
-        }.runTaskLater(plugin, 20L); // Check after 1 second
+        }.runTaskLater(plugin, 60L); // Check after 3 seconds instead of 1
+    }
+
+    /**
+     * Check if a location is in the server's spawn protection area
+     */
+    private boolean isInSpawnProtection(Location location) {
+        if (location.getWorld() != Bukkit.getWorlds().get(0)) {
+            return false; // Spawn protection only applies to the main world
+        }
+        
+        int spawnRadius = Bukkit.getServer().getSpawnRadius();
+        if (spawnRadius <= 0) return false;
+        
+        Location spawnLoc = location.getWorld().getSpawnLocation();
+        double distanceSquared = location.distanceSquared(spawnLoc);
+        
+        return distanceSquared < (spawnRadius * spawnRadius);
     }
 
     /**
@@ -468,12 +518,54 @@ public class RaiderEntityManager {
         plugin.getLogger().info("Raid " + raid.getId() + " verification: Found " + found + 
                                " mobs, missing " + missing + " mobs");
         
-        // If too many mobs are missing, try to respawn some
-        if (missing > 0 && found < 3) {
-            plugin.getLogger().warning("Too many mobs missing from raid " + raid.getId() + 
-                                     ", attempting to respawn");
-            spawnRaidMobs(raid, raid.getLocation());
+        // Check if we've had too many attempts already
+        Integer respawnAttempts = (Integer) raid.getMetadata("respawn_attempts");
+        if (respawnAttempts == null) {
+            respawnAttempts = 0;
         }
+        
+        // If too many mobs are missing, try to respawn some - but only for a limited number of attempts
+        if (missing > 0 && found < 3 && respawnAttempts < 3) {
+            plugin.getLogger().warning("Too many mobs missing from raid " + raid.getId() + 
+                                     ", attempting to respawn (attempt " + (respawnAttempts + 1) + "/3)");
+            raid.setMetadata("respawn_attempts", respawnAttempts + 1);
+            
+            // Add a longer delay before respawning to prevent immediate loops
+            new BukkitRunnable() {
+                @Override
+                public void run() {
+                    if (plugin.getRaidManager().getActiveRaids().containsKey(raid.getId())) {
+                        // Check again before respawning
+                        int currentCount = countExistingRaidEntities(raid);
+                        if (currentCount < 3) {
+                            spawnRaidMobs(raid, raid.getLocation());
+                        } else {
+                            plugin.getLogger().info("Raid " + raid.getId() + " now has sufficient mobs (" + currentCount + "), respawn canceled");
+                        }
+                    }
+                }
+            }.runTaskLater(plugin, 60L); // 3-second delay before respawn
+        } else if (respawnAttempts >= 3 && found < 3) {
+            plugin.getLogger().warning("Failed to maintain mob presence for raid " + raid.getId() + " after multiple attempts. Continuing raid without respawning more mobs.");
+        }
+    }
+
+    /**
+     * Count existing entities belonging to a raid
+     */
+    private int countExistingRaidEntities(ActiveRaid raid) {
+        int count = 0;
+        for (World world : plugin.getServer().getWorlds()) {
+            for (LivingEntity entity : world.getLivingEntities()) {
+                if (isRaider(entity)) {
+                    UUID raidId = getRaidId(entity);
+                    if (raidId != null && raidId.equals(raid.getId())) {
+                        count++;
+                    }
+                }
+            }
+        }
+        return count;
     }
 
     private Zombie spawnRaiderZombie(ActiveRaid raid, Location location, ConfigurationSection config) {
@@ -799,14 +891,29 @@ public class RaiderEntityManager {
     }
 
     private void markAsRaider(Entity entity, UUID raidId, String type) {
+        // Use both PDC and metadata for redundancy
         PersistentDataContainer pdc = entity.getPersistentDataContainer();
         pdc.set(raiderKey, PersistentDataType.BYTE, (byte) 1);
         pdc.set(raidIdKey, PersistentDataType.STRING, raidId.toString());
         pdc.set(raiderTypeKey, PersistentDataType.STRING, type);
         
+        // Set metadata as backup
         entity.setMetadata(METADATA_RAIDER, new FixedMetadataValue(plugin, true));
         entity.setMetadata(METADATA_RAID_ID, new FixedMetadataValue(plugin, raidId.toString()));
         entity.setMetadata(METADATA_RAIDER_TYPE, new FixedMetadataValue(plugin, type));
+        
+        // Log for debugging
+        if (plugin.getConfigManager().isDebugEnabled()) {
+            plugin.getLogger().info("Marked entity " + entity.getUniqueId() + " as raider for raid " + raidId);
+        }
+        
+        // Ensure the entity is properly tracked by the raid
+        if (entity instanceof LivingEntity) {
+            ActiveRaid raid = plugin.getRaidManager().getActiveRaid(raidId);
+            if (raid != null && !raid.getRaiderEntities().contains(entity.getUniqueId())) {
+                raid.addRaiderEntity(entity.getUniqueId());
+            }
+        }
     }
 
     public boolean isRaider(Entity entity) {
