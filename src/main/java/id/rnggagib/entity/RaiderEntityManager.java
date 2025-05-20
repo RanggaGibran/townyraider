@@ -147,6 +147,12 @@ public class RaiderEntityManager {
             }
             
             if (zombie != null) {
+                Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                    if (!zombie.isValid() || zombie.isDead()) {
+                        plugin.getLogger().warning("Zombie " + zombie.getUniqueId() + " despawned immediately after spawn at " + formatLocation(zombie.getLocation()));
+                    }
+                }, 2L);
+                
                 raiders.add(zombie);
                 raid.addRaiderEntity(zombie.getUniqueId());
                 
@@ -186,6 +192,12 @@ public class RaiderEntityManager {
                     }
                     
                     if (skeleton != null) {
+                        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                            if (!skeleton.isValid() || skeleton.isDead()) {
+                                plugin.getLogger().warning("Skeleton " + skeleton.getUniqueId() + " despawned immediately after spawn at " + formatLocation(skeleton.getLocation()));
+                            }
+                        }, 2L);
+                        
                         raiders.add(skeleton);
                         raid.addRaiderEntity(skeleton.getUniqueId());
                         
@@ -299,6 +311,12 @@ public class RaiderEntityManager {
             
             Zombie zombie = spawnRaiderZombie(raid, zombieLocation, zombieConfig);
             if (zombie != null) {
+                Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                    if (!zombie.isValid() || zombie.isDead()) {
+                        plugin.getLogger().warning("Zombie " + zombie.getUniqueId() + " despawned immediately after spawn at " + formatLocation(zombie.getLocation()));
+                    }
+                }, 2L);
+                
                 raiders.add(zombie);
                 raid.addRaiderEntity(zombie.getUniqueId());
                 
@@ -324,6 +342,12 @@ public class RaiderEntityManager {
                     
                     Skeleton skeleton = spawnGuardianSkeleton(raid, skeletonLocation, skeletonConfig, zombie);
                     if (skeleton != null) {
+                        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                            if (!skeleton.isValid() || skeleton.isDead()) {
+                                plugin.getLogger().warning("Skeleton " + skeleton.getUniqueId() + " despawned immediately after spawn at " + formatLocation(skeleton.getLocation()));
+                            }
+                        }, 2L);
+                        
                         raiders.add(skeleton);
                         raid.addRaiderEntity(skeleton.getUniqueId());
                         
